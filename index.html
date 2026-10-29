@@ -146,7 +146,8 @@ function errText(e){var m=(e&&e.message)||'';for(var k in ERR)if(m.indexOf(k)>-1
 
 var S = {view:'book',user:null,isAdmin:false,settings:null,courts:[],rates:{},date:null,days:[],sport:'pickleball',
   busy:{},staffRows:[],sel:null,dur:1,done:null,err:'',busyBtn:false,mSel:null,confirmCancel:false,mine:[],
-  form:{name:'',phone:'',email:'',stype:'desk',reason:'',slen:1,ssport:'pickleball'},authMsg:'',ready:false,loadErr:''};
+  form:{name:'',phone:'',email:'',password:'',password2:'',stype:'desk',reason:'',slen:1,ssport:'pickleball'},
+  authMode:'signin',showAuth:false,authMsg:'',authOk:false,authBusy:false,ready:false,loadErr:''};
 
 /* ---------- time zone helpers: everything shown is in the club's time zone ---------- */
 function tzParts(d,tz){var f=new Intl.DateTimeFormat('en-US',{timeZone:tz,hourCycle:'h23',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit'}),p={};f.formatToParts(d).forEach(function(x){p[x.type]=x.value});return p}
@@ -201,7 +202,7 @@ function courtName(id){var c=S.courts.find(function(x){return x.id===id});return
 function renderHead(){
   var items=[['book','Book a court']];if(S.user)items.push(['mine','My bookings']);if(S.isAdmin)items.push(['staff','Master schedule']);
   $('nav').innerHTML=items.map(function(i){return '<a href="#'+i[0]+'"'+(S.view===i[0]?' aria-current="page"':'')+'>'+i[1]+'</a>'}).join('');
-  $('who').innerHTML=S.user?esc(S.user.email)+' · <button class="linkbtn" data-act="signout">Sign out</button>':'Not signed in';
+  $('who').innerHTML=S.user?esc(S.user.email)+' · <button class="linkbtn" data-act="signout">Sign out</button>':'<button class="linkbtn" data-act="show-auth">Sign in</button>';
   if(S.settings)$('tagline').textContent='COURT BOOKING · '+S.courts.length+' COURTS · BADMINTON & PICKLEBALL';
   $('notice').innerHTML=S.loadErr?'<div class="notice" role="alert">'+esc(S.loadErr)+'</div>':(!S.ready?'<div class="notice">Loading the club schedule…</div>':'');
 }
@@ -245,11 +246,25 @@ function renderStats(){
   var tot=0,booked=0;S.courts.forEach(function(c){hoursFor(c).forEach(function(h){tot++;if(isBusy(c.id,S.date,h))booked++})});
   $('stats').innerHTML='<div class="stats"><div><b>'+Math.round(booked/Math.max(tot,1)*100)+'%</b> <span class="muted">of court-hours taken on '+esc(dlabel(S.date))+'</span></div><span class="muted">'+booked+' of '+tot+' court-hours</span></div>';
 }
-function signInBox(){
-  return '<div class="muted">Sign in to confirm. We email you a link, no password.</div><label>Email<input id="f-auth-email" data-f="email" type="email" autocomplete="email" value="'+esc(S.form.email)+'"></label>'+
-   (S.authMsg?'<div class="'+(S.authMsg.indexOf('Check')===0?'okmsg':'err')+'" role="status">'+esc(S.authMsg)+'</div>':'')+'<button class="btn" data-act="signin">Email me a sign-in link</button>';
+function authBox(){
+  var m=S.authMode,f=S.form,dis=S.authBusy?' disabled':'';
+  var msg=S.authMsg?'<div class="'+(S.authOk?'okmsg':'err')+'" role="alert">'+esc(S.authMsg)+'</div>':'';
+  var email='<label>Email<input id="f-auth-email" data-f="email" type="email" autocomplete="email" value="'+esc(f.email)+'"></label>';
+  var pw=function(id,lab,key,ac){return '<label>'+lab+'<input id="'+id+'" data-f="'+key+'" type="password" autocomplete="'+ac+'" value="'+esc(f[key])+'"></label>'};
+  var link=function(mode,text){return '<button type="button" class="linkbtn" data-act="auth-mode" data-m="'+mode+'">'+text+'</button>'};
+  var btn=function(t){return '<button class="btn" type="submit"'+dis+'>'+(S.authBusy?'Please wait…':t)+'</button>'};
+  var head={signin:'Sign in',signup:'Create account',forgot:'Reset your password',reset:'Choose a new password',magic:'Sign in by email link'}[m];
+  var body='';
+  if(m==='signin')body=email+pw('f-auth-pw','Password','password','current-password')+msg+btn('Sign in')+'<div class="row" style="justify-content:space-between">'+link('forgot','Forgot password?')+link('signup','Create an account')+'</div><div>'+link('magic','Email me a sign-in link instead')+'</div>';
+  else if(m==='signup')body='<label>Your name<input id="f-auth-name" data-f="name" autocomplete="name" value="'+esc(f.name)+'"></label>'+email+pw('f-auth-pw','Password (8+ characters)','password','new-password')+msg+btn('Create account')+'<div>'+link('signin','I already have an account')+'</div>';
+  else if(m==='forgot')body='<p class="muted">Enter your email and we will send a link to choose a new password.</p>'+email+msg+btn('Send reset link')+'<div>'+link('signin','Back to sign in')+'</div>';
+  else if(m==='reset')body='<p class="muted">Choose a new password for your account.</p>'+pw('f-auth-pw','New password (8+ characters)','password','new-password')+pw('f-auth-pw2','Repeat new password','password2','new-password')+msg+btn('Save new password');
+  else body='<p class="muted">We email you a link that signs you in. No password needed.</p>'+email+msg+btn('Email me a link')+'<div>'+link('signin','Use my password instead')+'</div>';
+  return '<h2>'+head+'</h2><form data-form="auth" novalidate style="display:flex;flex-direction:column;gap:14px">'+body+'</form>';
 }
+function signInBox(){return authBox()}
 function panelBook(){
+  if(S.authMode==='reset'||(!S.user&&S.showAuth))return authBox();
   if(S.done){var d=S.done;return '<h2>Court booked</h2><div class="ref" id="refbox">'+esc(d.reference)+'</div><dl><dt>Court</dt><dd>'+esc(d.court)+' · '+SPORTS[d.sport]+'</dd><dt>When</dt><dd>'+esc(fmtTs(d.start_time))+' – '+esc(fmt(hourOf(d.end_time)))+'</dd><dt>Amount</dt><dd>$'+Number(d.price)+', pay at the club</dd></dl><p class="muted">Show this reference at the front desk. You can see and cancel it under My bookings.</p><button class="btn" data-act="again">Book another</button>'}
   if(!S.sel)return '<h2>Reserve a court</h2><p>Pick an open slot on the grid. Each square is one hour on one court.</p><dl><dt>Off-peak</dt><dd>Weekdays before '+fmt(S.settings.peak_start_hour)+'. Pickleball $'+S.rates.pickleball_o+', badminton $'+S.rates.badminton_o+'.</dd><dt>Peak</dt><dd>Weekdays from '+fmt(S.settings.peak_start_hour)+' and all weekend. Pickleball $'+S.rates.pickleball_p+', badminton $'+S.rates.badminton_p+'.</dd><dt>Payment</dt><dd>At the club.</dd></dl>';
   var c=S.courts.find(function(x){return x.id===S.sel.c}),h=S.sel.h,can2=S.settings.max_hours>=2&&hoursFor(c).indexOf(h+1)>-1&&isFree(c.id,h+1);
@@ -317,11 +332,44 @@ async function doMineCancel(id){
   S.err='';var r=await sb.rpc('cancel_booking',{p_booking_id:id});if(r.error)S.err=errText(r.error);
   await loadMine();renderMine();
 }
-async function doSignIn(){
-  var em=(S.form.email||'').trim();if(!/^\S+@\S+\.\S+$/.test(em)){S.authMsg='Enter a valid email address.';return renderPanel()}
-  S.authMsg='Sending…';renderPanel();
-  var r=await sb.auth.signInWithOtp({email:em,options:{emailRedirectTo:location.origin+location.pathname}});
-  S.authMsg=r.error?'Could not send the link. Try again in a minute.':'Check your email for the sign-in link, then return to this page.';renderPanel();
+function authErr(e){
+  var s=((e&&e.code)||'')+' '+((e&&e.message)||'');s=s.toLowerCase();
+  if(s.indexOf('invalid login')>-1||s.indexOf('invalid_credentials')>-1)return 'Email or password is incorrect.';
+  if(s.indexOf('not confirmed')>-1||s.indexOf('email_not_confirmed')>-1)return 'Confirm your email first, using the link we sent you.';
+  if(s.indexOf('already')>-1)return 'That email already has an account. Sign in instead.';
+  if(s.indexOf('rate')>-1||s.indexOf('too many')>-1)return 'Too many attempts. Wait a few minutes and try again.';
+  if(s.indexOf('same')>-1&&s.indexOf('password')>-1)return 'Choose a password different from your old one.';
+  if(s.indexOf('weak')>-1||s.indexOf('password')>-1)return 'Choose a stronger password (8+ characters).';
+  return 'Could not complete that. Please try again.';
+}
+async function doAuth(){
+  var m=S.authMode,f=S.form,em=(f.email||'').trim(),back=location.origin+location.pathname;S.authMsg='';S.authOk=false;
+  if(m!=='reset'&&!/^\S+@\S+\.\S+$/.test(em))S.authMsg='Enter a valid email address.';
+  else if(m==='signin'&&!f.password)S.authMsg='Enter your password.';
+  else if(m==='signup'&&!f.name.trim())S.authMsg='Enter your name.';
+  else if((m==='signup'||m==='reset')&&(f.password||'').length<8)S.authMsg='Use at least 8 characters for your password.';
+  else if(m==='reset'&&f.password!==f.password2)S.authMsg='The two passwords do not match.';
+  if(S.authMsg)return renderPanel();
+  S.authBusy=true;renderPanel();var r;
+  try{
+    if(m==='signin')r=await sb.auth.signInWithPassword({email:em,password:f.password});
+    else if(m==='signup')r=await sb.auth.signUp({email:em,password:f.password,options:{data:{full_name:f.name.trim()},emailRedirectTo:back}});
+    else if(m==='forgot')r=await sb.auth.resetPasswordForEmail(em,{redirectTo:back});
+    else if(m==='reset')r=await sb.auth.updateUser({password:f.password});
+    else r=await sb.auth.signInWithOtp({email:em,options:{emailRedirectTo:back}});
+  }catch(e){r={error:e}}
+  S.authBusy=false;
+  if(r.error){S.authMsg=authErr(r.error)}
+  else if(m==='signin'){f.password='';S.showAuth=false}
+  else if(m==='signup'){
+    if(r.data&&r.data.session){f.password='';S.showAuth=false}
+    else if(r.data&&r.data.user&&r.data.user.identities&&r.data.user.identities.length===0)S.authMsg='That email already has an account. Sign in instead.';
+    else{S.authOk=true;S.authMsg='Account created. Check your email to confirm it, then sign in. The email can take a few minutes; check spam.';f.password=''}
+  }
+  else if(m==='forgot'){S.authOk=true;S.authMsg='If that email has an account, a reset link is on its way. Check your inbox and spam.'}
+  else if(m==='reset'){f.password='';f.password2='';S.authMode='signin';S.showAuth=false;await loadProfile();renderHead()}
+  else{S.authOk=true;S.authMsg='Check your email for the sign-in link, then return to this page.'}
+  renderPanel();
 }
 
 /* ---------- events ---------- */
@@ -329,12 +377,13 @@ document.addEventListener('click',function(e){
   var t=e.target.closest('[data-act]');if(!t)return;var a=t.dataset.act;
   if(a==='date'){S.date=t.dataset.d;S.sel=null;S.dur=1;S.mSel=null;S.done=null;S.err='';S.confirmCancel=false;renderToolbar();refresh().then(renderPanel)}
   else if(a==='sport'){S.sport=t.dataset.v;renderToolbar();renderGrid();renderPanel()}
-  else if(a==='pick'){var c=t.dataset.c,h=+t.dataset.h,court=S.courts.find(function(x){return x.id===c});S.done=null;S.err='';S.sel={c:c,h:h};
+  else if(a==='pick'){var c=t.dataset.c,h=+t.dataset.h,court=S.courts.find(function(x){return x.id===c});S.done=null;S.err='';S.showAuth=false;S.sel={c:c,h:h};
     if(S.dur===2&&!(hoursFor(court).indexOf(h+1)>-1&&isFree(c,h+1)))S.dur=1;renderGrid();renderPanel()}
   else if(a==='dur'){S.dur=+t.dataset.v;renderGrid();renderPanel()}
   else if(a==='book')doBook();
   else if(a==='again'){S.done=null;renderPanel()}
-  else if(a==='signin')doSignIn();
+  else if(a==='show-auth'){S.showAuth=true;S.authMode='signin';S.authMsg='';S.sel=null;renderGrid();renderPanel()}
+  else if(a==='auth-mode'){S.authMode=t.dataset.m;S.authMsg='';S.authOk=false;renderPanel()}
   else if(a==='signout'){sb.auth.signOut().then(function(){S.user=null;S.isAdmin=false;S.mine=[];location.hash='#book';init(true)})}
   else if(a==='open'){S.mSel={c:t.dataset.c,h:+t.dataset.h};S.err='';S.confirmCancel=false;renderGrid();renderPanel()}
   else if(a==='staff-add')doStaffAdd();
@@ -343,6 +392,7 @@ document.addEventListener('click',function(e){
   else if(a==='cancel-yes')doStaffCancel(t.dataset.id);
   else if(a==='mine-cancel')doMineCancel(t.dataset.id);
 });
+document.addEventListener('submit',function(e){var fm=e.target;if(fm.dataset&&fm.dataset.form==='auth'){e.preventDefault();doAuth()}});
 document.addEventListener('input',function(e){var f=e.target.dataset&&e.target.dataset.f;if(f)S.form[f]=e.target.value});
 document.addEventListener('change',function(e){var f=e.target.dataset&&e.target.dataset.f;if(f==='stype'){S.form.stype=e.target.value;S.err='';renderPanel()}});
 async function route(){
@@ -360,7 +410,15 @@ async function init(soft){
   }catch(e){S.loadErr='The booking service is not reachable right now. Please try again shortly.';S.ready=false}
   await route();
 }
-sb.auth.onAuthStateChange(function(ev){if(ev==='SIGNED_IN'||ev==='SIGNED_OUT'){loadProfile().then(function(){S.authMsg='';renderHead();if(ev==='SIGNED_IN')route();else renderPanel()})}});
+sb.auth.onAuthStateChange(function(ev,session){
+  setTimeout(function(){
+    if(ev==='PASSWORD_RECOVERY'){S.authMode='reset';S.showAuth=true;S.authMsg='';S.form.password='';S.form.password2='';renderHead();renderPanel();return}
+    if(ev!=='SIGNED_IN'&&ev!=='SIGNED_OUT')return;
+    var uid=session&&session.user?session.user.id:null,cur=S.user?S.user.id:null;
+    if(ev==='SIGNED_IN'&&uid===cur)return;
+    loadProfile().then(function(){S.authMsg='';S.showAuth=false;renderHead();route()});
+  },0);
+});
 setInterval(function(){if(!document.hidden&&S.ready&&S.view!=='mine'&&!S.busyBtn)refresh()},30000);
 renderAll();init();
 })();
