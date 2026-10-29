@@ -101,6 +101,12 @@ dt{color:var(--muted)}dd{margin:0;min-width:0;overflow-wrap:anywhere}
 .tag.cx{color:var(--muted)}
 .stats{margin:0 0 14px;background:var(--surface);border:1px solid var(--line);padding:12px 16px;display:flex;flex-wrap:wrap;gap:4px 16px;align-items:baseline;justify-content:space-between}
 .stats b{font:700 30px var(--font-display)}
+.setgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px;margin-top:18px;align-items:start}
+.setbox{background:var(--surface);border:1px solid var(--line);padding:18px;display:flex;flex-direction:column;gap:12px}
+.setbox h3{font-size:22px;text-transform:uppercase}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.check{flex-direction:row;align-items:center;gap:8px;font-weight:500}
+.check input{width:auto}
 </style>
 </head>
 <body>
@@ -119,6 +125,7 @@ dt{color:var(--muted)}dd{margin:0;min-width:0;overflow-wrap:anywhere}
     </div>
   </section>
   <section id="v-mine" hidden></section>
+  <section id="v-settings" hidden></section>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
@@ -200,7 +207,7 @@ async function loadMine(){
 /* ---------- rendering ---------- */
 function courtName(id){var c=S.courts.find(function(x){return x.id===id});return c?c.name:''}
 function renderHead(){
-  var items=[['book','Book a court']];if(S.user)items.push(['mine','My bookings']);if(S.isAdmin)items.push(['staff','Master schedule']);
+  var items=[['book','Book a court']];if(S.user)items.push(['mine','My bookings']);if(S.isAdmin)items.push(['staff','Master schedule'],['settings','Settings']);
   $('nav').innerHTML=items.map(function(i){return '<a href="#'+i[0]+'"'+(S.view===i[0]?' aria-current="page"':'')+'>'+i[1]+'</a>'}).join('');
   $('who').innerHTML=S.user?esc(S.user.email)+' · <button class="linkbtn" data-act="signout">Sign out</button>':'<button class="linkbtn" data-act="show-auth">Sign in</button>';
   if(S.settings)$('tagline').textContent='COURT BOOKING · '+S.courts.length+' COURTS · BADMINTON & PICKLEBALL';
@@ -294,12 +301,12 @@ function renderMine(){
 }
 function renderAll(){
   renderHead();
-  var g=S.view!=='mine';$('v-grid').hidden=!g;$('v-mine').hidden=g;
-  if(g){renderToolbar();renderStats();renderGrid();renderPanel()}else renderMine();
+  var g=S.view==='book'||S.view==='staff';$('v-grid').hidden=!g;$('v-mine').hidden=S.view!=='mine';$('v-settings').hidden=S.view!=='settings';
+  if(g){renderToolbar();renderStats();renderGrid();renderPanel()}else if(S.view==='mine')renderMine();else renderSettings();
 }
 
 /* ---------- actions ---------- */
-async function refresh(){try{await loadAvailability();S.loadErr=''}catch(e){S.loadErr='Could not load availability. Check your connection.'}
+async function refresh(){if(S.view==='settings')return;try{await loadAvailability();S.loadErr=''}catch(e){S.loadErr='Could not load availability. Check your connection.'}
   if(S.view==='mine')renderMine();else{renderGrid();renderStats();renderHead()}}
 async function doBook(){
   var f=S.form;S.err='';if(!f.name.trim()){S.err='Enter your name.';return renderPanel()}
@@ -372,6 +379,74 @@ async function doAuth(){
   renderPanel();
 }
 
+/* ---------- admin settings ---------- */
+var TZS=['America/New_York','America/Chicago','America/Denver','America/Phoenix','America/Los_Angeles','America/Anchorage','Pacific/Honolulu','America/Toronto','America/Vancouver','Europe/London','Europe/Paris','Asia/Kolkata','Asia/Dubai','Asia/Singapore','Australia/Sydney'];
+async function loadCfg(){
+  var r=await Promise.all([sb.from('club_settings').select('*').single(),sb.from('court_rates').select('*'),sb.from('courts').select('*').order('name')]);
+  var rates={};(r[1].data||[]).forEach(function(x){rates[x.sport+(x.peak?'_p':'_o')]=Number(x.price)});
+  S.cfg={s:Object.assign({},r[0].data),r:rates,c:(r[2].data||[]).map(function(c){return {id:c.id,name:c.name,description:c.description||'',open:parseInt(c.open_time,10),close:parseInt(c.close_time,10),active:c.is_active}})};
+  S.cfgMsg={};
+}
+function hourOpts(sel,from,to){var o='';for(var h=from;h<=to;h++)o+='<option value="'+h+'"'+(+sel===h?' selected':'')+'>'+fmt(h)+'</option>';return o}
+function numOpts(sel,from,to,unit){var o='';for(var n=from;n<=to;n++)o+='<option value="'+n+'"'+(+sel===n?' selected':'')+'>'+n+(unit?' '+unit+(n===1?'':'s'):'')+'</option>';return o}
+function cfgMsg(sec){var m=S.cfgMsg&&S.cfgMsg[sec];return m?'<div class="'+(m.ok?'okmsg':'err')+'" role="alert">'+esc(m.t)+'</div>':''}
+function renderSettings(){
+  var el=$('v-settings');
+  if(!S.cfg){el.innerHTML='<p class="muted" style="margin-top:20px">Loading settings…</p>';return}
+  var s=S.cfg.s,r=S.cfg.r,b=S.busyBtn?' disabled':'';
+  var rate=function(sp,pk,lab){return '<label>'+lab+' ($ per hour)<input type="number" min="0" step="0.5" inputmode="decimal" data-k="r.'+sp+'_'+pk+'" value="'+esc(r[sp+'_'+pk]!=null?r[sp+'_'+pk]:'')+'"></label>'};
+  el.innerHTML='<h2 style="margin-top:20px">Settings</h2><p class="muted" style="margin-top:6px">Changes apply to new bookings straight away. Existing bookings are not changed.</p><div class="setgrid">'+
+  '<div class="setbox"><h3>Club</h3>'+
+   '<label>Time zone<input list="tzlist" data-k="s.timezone" value="'+esc(s.timezone)+'" autocomplete="off"></label><datalist id="tzlist">'+TZS.map(function(z){return '<option value="'+z+'">'}).join('')+'</datalist>'+
+   '<label>Peak rates start at<select data-k="s.peak_start_hour">'+hourOpts(s.peak_start_hour,0,23)+'</select></label>'+
+   '<label>Longest booking<select data-k="s.max_hours">'+numOpts(s.max_hours,1,4,'hour')+'</select></label>'+
+   '<label>Upcoming bookings per player<select data-k="s.max_upcoming_per_user">'+numOpts(s.max_upcoming_per_user,1,20)+'</select></label>'+
+   '<label>Players can cancel until<select data-k="s.cancel_cutoff_hours">'+numOpts(s.cancel_cutoff_hours,0,48,'hour')+'</select><span class="muted">before the start time</span></label>'+
+   '<label>Bookable days ahead<select data-k="s.max_days_ahead">'+numOpts(s.max_days_ahead,1,60,'day')+'</select></label>'+
+   cfgMsg('club')+'<button class="btn" data-act="save-club"'+b+'>Save club settings</button></div>'+
+  '<div class="setbox"><h3>Rates</h3><p class="muted">Peak is weekends, and weekdays from the peak start time above.</p>'+
+   rate('pickleball','o','Pickleball off-peak')+rate('pickleball','p','Pickleball peak')+rate('badminton','o','Badminton off-peak')+rate('badminton','p','Badminton peak')+
+   cfgMsg('rates')+'<button class="btn" data-act="save-rates"'+b+'>Save rates</button></div>'+
+  '<div class="setbox"><h3>Courts</h3>'+S.cfg.c.map(function(c){return '<div class="setbox" style="background:var(--bg)"><label>Name<input data-k="c.'+c.id+'.name" value="'+esc(c.name)+'"></label><label>Description<input data-k="c.'+c.id+'.description" value="'+esc(c.description)+'"></label><div class="two"><label>Opens<select data-k="c.'+c.id+'.open">'+hourOpts(c.open,0,22)+'</select></label><label>Closes<select data-k="c.'+c.id+'.close">'+hourOpts(c.close,1,23)+'</select></label></div><label class="check"><input type="checkbox" data-k="c.'+c.id+'.active"'+(c.active?' checked':'')+'>Open for booking</label></div>'}).join('')+
+   cfgMsg('courts')+'<button class="btn" data-act="save-courts"'+b+'>Save courts</button></div></div>';
+}
+function setCfg(el){
+  var k=el.dataset&&el.dataset.k;if(!k||!S.cfg)return;var p=k.split('.'),v=el.type==='checkbox'?el.checked:el.value;
+  if(p[0]==='s')S.cfg.s[p[1]]=v;else if(p[0]==='r')S.cfg.r[p[1]]=v;
+  else if(p[0]==='c'){var c=S.cfg.c.find(function(x){return x.id===p[1]});if(c)c[p[2]]=(p[2]==='open'||p[2]==='close')?+v:v}
+}
+async function saveCfg(sec){
+  var c=S.cfg,res,msg='';S.cfgMsg={};
+  try{
+    if(sec==='club'){
+      var s=c.s,tz=String(s.timezone||'').trim();
+      try{new Intl.DateTimeFormat('en-US',{timeZone:tz})}catch(e){S.cfgMsg.club={t:'That time zone is not valid. Example: America/New_York.'};return renderSettings()}
+      S.busyBtn=true;renderSettings();
+      res=await sb.from('club_settings').update({timezone:tz,peak_start_hour:+s.peak_start_hour,max_hours:+s.max_hours,max_upcoming_per_user:+s.max_upcoming_per_user,cancel_cutoff_hours:+s.cancel_cutoff_hours,max_days_ahead:+s.max_days_ahead}).eq('id',true).select();
+    }else if(sec==='rates'){
+      var rows=[],bad=false;['pickleball','badminton'].forEach(function(sp){['o','p'].forEach(function(pk){var v=parseFloat(c.r[sp+'_'+pk]);if(!(v>=0))bad=true;rows.push({sport:sp,peak:pk==='p',price:v})})});
+      if(bad){S.cfgMsg.rates={t:'Enter a price of 0 or more for every rate.'};return renderSettings()}
+      S.busyBtn=true;renderSettings();
+      res=await sb.from('court_rates').upsert(rows,{onConflict:'sport,peak'}).select();
+    }else{
+      for(var i=0;i<c.c.length;i++){var ct=c.c[i];
+        if(!String(ct.name).trim()){S.cfgMsg.courts={t:'Every court needs a name.'};return renderSettings()}
+        if(!(+ct.close>+ct.open)){S.cfgMsg.courts={t:ct.name+': closing time must be after opening time.'};return renderSettings()}}
+      S.busyBtn=true;renderSettings();
+      for(var j=0;j<c.c.length;j++){var x=c.c[j];
+        res=await sb.from('courts').update({name:x.name.trim(),description:x.description.trim()||null,open_time:pad(x.open)+':00',close_time:pad(x.close)+':00',is_active:!!x.active}).eq('id',x.id).select();
+        if(res.error||!res.data||!res.data.length)break}
+    }
+  }catch(e){res={error:e}}
+  S.busyBtn=false;
+  if(!res||res.error||!res.data||!res.data.length){
+    var t=(res&&res.error&&String(res.error.message||'').indexOf('invalid_timezone')>-1)?'That time zone name is not recognised.':(res&&res.error&&/check constraint/i.test(res.error.message||''))?'One of those values is outside the allowed range.':'Could not save. You may need to sign in again as an admin.';
+    S.cfgMsg[sec]={t:t};return renderSettings();
+  }
+  try{await loadStatic()}catch(e){}
+  S.cfgMsg[sec]={ok:true,t:'Saved.'};renderSettings();renderHead();
+}
+
 /* ---------- events ---------- */
 document.addEventListener('click',function(e){
   var t=e.target.closest('[data-act]');if(!t)return;var a=t.dataset.act;
@@ -391,15 +466,19 @@ document.addEventListener('click',function(e){
   else if(a==='cancel-no'){S.confirmCancel=false;renderPanel()}
   else if(a==='cancel-yes')doStaffCancel(t.dataset.id);
   else if(a==='mine-cancel')doMineCancel(t.dataset.id);
+  else if(a==='save-club')saveCfg('club');
+  else if(a==='save-rates')saveCfg('rates');
+  else if(a==='save-courts')saveCfg('courts');
 });
 document.addEventListener('submit',function(e){var fm=e.target;if(fm.dataset&&fm.dataset.form==='auth'){e.preventDefault();doAuth()}});
-document.addEventListener('input',function(e){var f=e.target.dataset&&e.target.dataset.f;if(f)S.form[f]=e.target.value});
-document.addEventListener('change',function(e){var f=e.target.dataset&&e.target.dataset.f;if(f==='stype'){S.form.stype=e.target.value;S.err='';renderPanel()}});
+document.addEventListener('input',function(e){setCfg(e.target);var f=e.target.dataset&&e.target.dataset.f;if(f)S.form[f]=e.target.value});
+document.addEventListener('change',function(e){setCfg(e.target);var f=e.target.dataset&&e.target.dataset.f;if(f==='stype'){S.form.stype=e.target.value;S.err='';renderPanel()}});
 async function route(){
-  var v=(location.hash||'#book').slice(1);if(['book','mine','staff'].indexOf(v)<0)v='book';
-  if(v==='mine'&&!S.user)v='book';if(v==='staff'&&!S.isAdmin)v='book';
+  var v=(location.hash||'#book').slice(1);if(['book','mine','staff','settings'].indexOf(v)<0)v='book';
+  if(v==='mine'&&!S.user)v='book';if((v==='staff'||v==='settings')&&!S.isAdmin)v='book';
   S.view=v;S.sel=null;S.mSel=null;S.err='';S.confirmCancel=false;S.dur=1;
   if(v==='mine')await loadMine();
+  if(v==='settings'){S.cfg=null;try{await loadCfg()}catch(e){S.cfg=null}}
   renderAll();if(S.ready&&v!=='mine')await refresh();
 }
 window.addEventListener('hashchange',route);
@@ -419,7 +498,7 @@ sb.auth.onAuthStateChange(function(ev,session){
     loadProfile().then(function(){S.authMsg='';S.showAuth=false;renderHead();route()});
   },0);
 });
-setInterval(function(){if(!document.hidden&&S.ready&&S.view!=='mine'&&!S.busyBtn)refresh()},30000);
+setInterval(function(){if(!document.hidden&&S.ready&&S.view!=='mine'&&S.view!=='settings'&&!S.busyBtn)refresh()},30000);
 renderAll();init();
 })();
 </script>
