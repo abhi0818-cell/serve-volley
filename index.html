@@ -65,7 +65,7 @@ button.cell.free:hover{border-color:var(--primary);color:var(--ink)}
 .cell.booked b{font:700 11px var(--font-body);letter-spacing:.06em}
 .cell.booked i{font-style:normal;font-size:10px;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .cell.booked.picked{outline:2px solid var(--ink);outline-offset:-2px}
-.s-web{--s:var(--src-web)}.s-desk{--s:var(--src-desk)}.s-playtomic{--s:var(--src-playtomic)}.s-courtreserve{--s:var(--src-courtreserve)}.s-program{--s:var(--src-program)}.s-hold{--s:var(--src-hold)}
+.cell.in::after{content:'✓';position:absolute;top:2px;right:4px;font-weight:700}.cell.late{outline:2px solid #c2410c;outline-offset:-2px}.s-web{--s:var(--src-web)}.s-desk{--s:var(--src-desk)}.s-playtomic{--s:var(--src-playtomic)}.s-courtreserve{--s:var(--src-courtreserve)}.s-program{--s:var(--src-program)}.s-hold{--s:var(--src-hold)}
 .legend{display:flex;flex-wrap:wrap;gap:6px 18px;margin-top:12px;font-size:13px;color:var(--muted)}
 .legend span{display:inline-flex;align-items:center;gap:6px}
 .sw{width:12px;height:12px;background:var(--s,var(--surface));display:inline-block}
@@ -126,6 +126,8 @@ dt{color:var(--muted)}dd{margin:0;min-width:0;overflow-wrap:anywhere}
   </section>
   <section id="v-mine" hidden></section>
   <section id="v-settings" hidden></section>
+  <section id="v-profile" hidden></section>
+  <section id="v-people" hidden></section>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
@@ -144,7 +146,8 @@ var ERR = {
   not_signed_in:'Sign in to continue.', name_required:'Enter your name.', in_the_past:'That time has already passed.', too_far_ahead:'That date is too far ahead to book yet.',
   too_many_bookings:'You have reached the limit of upcoming bookings. Cancel one or wait until one has passed.', outside_opening_hours:'That is outside opening hours.',
   invalid_length:'Choose 1 or 2 hours.', invalid_sport:'Choose pickleball or badminton.', not_on_the_hour:'Bookings start on the hour.', court_not_found:'That court is not available.',
-  not_allowed:'Staff only.', too_late_to_cancel:'Too late to cancel online. Please call the club.', booking_not_found:'Booking not found.'
+  not_allowed:'Staff only.', too_late_to_cancel:'Too late to cancel online. Please call the club.', booking_not_found:'Booking not found.', already_checked_in:'That player is checked in, so it cannot be a no-show. Undo the check-in first.', not_markable:'That booking cannot be changed.',
+  payments_not_configured:'Online payment is not set up yet. Please contact the club.', hold_expired:'Your hold on that slot has expired. Please pick it again.', not_payable:'This booking cannot be paid for.', order_failed:'Could not start the payment. Please try again.', bad_signature:'Payment could not be verified. If money was taken it will be refunded.', network:'Could not reach the payment service. Please try again.'
 };
 var $ = function(id){return document.getElementById(id)};
 var esc = function(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})};
@@ -170,6 +173,8 @@ var fmt=function(h){return (h%12||12)+':00 '+(h<12?'am':'pm')};
 function fmtTs(ts){var p=tzParts(new Date(ts),S.settings.timezone);return dlabel(p.year+'-'+p.month+'-'+p.day)+', '+fmt(+p.hour)}
 function hoursFor(c){var o=parseInt(c.open_time,10),cl=parseInt(c.close_time,10),a=[];for(var h=o;h<cl;h++)a.push(h);return a}
 function allHours(){var min=24,max=0;S.courts.forEach(function(c){min=Math.min(min,parseInt(c.open_time,10));max=Math.max(max,parseInt(c.close_time,10))});var a=[];for(var h=min;h<max;h++)a.push(h);return a}
+var CURS=[['USD','US dollar'],['CAD','Canadian dollar'],['MXN','Mexican peso'],['GBP','British pound'],['EUR','Euro'],['CHF','Swiss franc'],['SEK','Swedish krona'],['NOK','Norwegian krone'],['DKK','Danish krone'],['PLN','Polish zloty'],['AED','UAE dirham'],['SAR','Saudi riyal'],['INR','Indian rupee'],['SGD','Singapore dollar'],['MYR','Malaysian ringgit'],['THB','Thai baht'],['IDR','Indonesian rupiah'],['PHP','Philippine peso'],['VND','Vietnamese dong'],['JPY','Japanese yen'],['KRW','South Korean won'],['CNY','Chinese yuan'],['HKD','Hong Kong dollar'],['AUD','Australian dollar'],['NZD','New Zealand dollar'],['ZAR','South African rand'],['BRL','Brazilian real'],['CLP','Chilean peso'],['COP','Colombian peso']];
+function money(n,cur){cur=cur||(S.settings&&S.settings.currency)||'USD';var v=Number(n);try{return new Intl.NumberFormat(undefined,{style:'currency',currency:cur,minimumFractionDigits:v%1?2:0,maximumFractionDigits:2}).format(v)}catch(e){return cur+' '+v}}
 function priceFor(sport,date,h){var peak=dow(date)%6===0||h>=S.settings.peak_start_hour;var r=S.rates[sport+(peak?'_p':'_o')];return {amt:r,peak:peak}}
 function slotRange(date,h){return [zoned(date,h,S.settings.timezone),zoned(date,h+1,S.settings.timezone)]}
 function isBusy(courtId,date,h){var r=slotRange(date,h),list=S.busy[courtId]||[];return list.some(function(b){return new Date(b.start_time)<r[1]&&new Date(b.end_time)>r[0]})}
@@ -197,7 +202,17 @@ async function loadAvailability(){
 async function loadProfile(){
   var s=await sb.auth.getSession();S.user=s.data.session?s.data.session.user:null;S.isAdmin=false;
   if(S.user){var p=await sb.from('profiles').select('full_name,phone,is_admin').eq('id',S.user.id).maybeSingle();
+    var cb=await sb.rpc('my_credit');S.credit=Number(cb&&cb.data)||0;
     if(p.data){S.isAdmin=!!p.data.is_admin;if(!S.form.name)S.form.name=p.data.full_name||'';if(!S.form.phone)S.form.phone=p.data.phone||''}}
+}
+async function loadLedger(){
+  var r=await sb.from('credit_ledger').select('*').eq('user_id',S.user.id).order('created_at',{ascending:false}).limit(50);S.ledger=r.data||[];
+  var cb=await sb.rpc('my_credit');S.credit=Number(cb&&cb.data)||0;
+  var ns=await sb.from('bookings').select('id',{count:'exact',head:true}).eq('user_id',S.user.id).eq('no_show',true);S.myNoShows=ns&&ns.count||0;
+  if(S.view==='profile')renderProfile();
+}
+async function loadPeople(){
+  var r=await sb.rpc('admin_list_customers');S.people=r.data||[];if(S.view==='people')renderPeople();
 }
 async function loadMine(){
   if(!S.user){S.mine=[];return}
@@ -207,7 +222,7 @@ async function loadMine(){
 /* ---------- rendering ---------- */
 function courtName(id){var c=S.courts.find(function(x){return x.id===id});return c?c.name:''}
 function renderHead(){
-  var items=[['book','Book a court']];if(S.user)items.push(['mine','My bookings']);if(S.isAdmin)items.push(['staff','Master schedule'],['settings','Settings']);
+  var items=[['book','Book a court']];if(S.user)items.push(['mine','My bookings'],['profile','Profile']);if(S.isAdmin)items.push(['staff','Master schedule'],['people','Customers'],['settings','Settings']);
   $('nav').innerHTML=items.map(function(i){return '<a href="#'+i[0]+'"'+(S.view===i[0]?' aria-current="page"':'')+'>'+i[1]+'</a>'}).join('');
   $('who').innerHTML=S.user?esc(S.user.email)+' · <button class="linkbtn" data-act="signout">Sign out</button>':'<button class="linkbtn" data-act="show-auth">Sign in</button>';
   if(S.settings)$('tagline').textContent='COURT BOOKING · '+S.courts.length+' COURTS · BADMINTON & PICKLEBALL';
@@ -233,17 +248,18 @@ function renderGrid(){
       if(busy){
         if(staff&&rec){
           var prev=staffRec(c.id,hr-1),cont=prev&&prev.id===rec.id,pk=S.mSel&&S.mSel.c===c.id&&S.mSel.h===hr;
-          h+='<button class="cell booked s-'+rec.source+(cont?' cont':'')+(pk?' picked':'')+'" data-act="open" data-c="'+c.id+'" data-h="'+hr+'" aria-label="'+esc(lab+', '+SOURCES[rec.source]+', '+(rec.player_name||rec.label||''))+'">'+(cont?'':'<b>'+CODES[rec.source]+(rec.sport?' · '+(rec.sport==='pickleball'?'PB':'BD'):'')+'</b><i>'+esc(rec.player_name||rec.label||'')+'</i>')+'</button>';
+          var st=new Date(rec.start_time),inn=!!rec.checked_in_at,late=!inn&&!rec.blockId&&rec.status==='confirmed'&&rec.source!=='program'&&new Date()-st>15*60000&&new Date()<new Date(rec.end_time);
+          h+='<button class="cell booked s-'+rec.source+(cont?' cont':'')+(pk?' picked':'')+(inn?' in':'')+(late?' late':'')+'" data-act="open" data-c="'+c.id+'" data-h="'+hr+'" aria-label="'+esc(lab+', '+SOURCES[rec.source]+', '+(rec.player_name||rec.label||''))+'">'+(cont?'':'<b>'+CODES[rec.source]+(rec.sport?' · '+(rec.sport==='pickleball'?'PB':'BD'):'')+'</b><i>'+esc(rec.player_name||rec.label||'')+'</i>')+'</button>';
         }else h+='<div class="cell booked" aria-label="'+esc(lab+', taken')+'"><i>Taken</i></div>';
-      }else if(isPast(S.date,hr))h+='<div class="cell past" aria-label="'+esc(lab+', passed')+'"></div>';
+      }else if(staff?slotRange(S.date,hr)[1]<=new Date():isPast(S.date,hr))h+='<div class="cell past" aria-label="'+esc(lab+', passed')+'"></div>';
       else{
         var sel=staff?(S.mSel&&S.mSel.c===c.id&&S.mSel.h===hr):inSel(c.id,hr);
-        h+='<button class="cell free'+(sel?' sel':'')+'" data-act="'+(staff?'open':'pick')+'" data-c="'+c.id+'" data-h="'+hr+'" aria-label="'+esc(lab+', open')+'">'+(staff?'+':'$'+priceFor(S.sport,S.date,hr).amt)+'</button>';
+        h+='<button class="cell free'+(sel?' sel':'')+'" data-act="'+(staff?'open':'pick')+'" data-c="'+c.id+'" data-h="'+hr+'" aria-label="'+esc(lab+', open')+'">'+(staff?'+':money(priceFor(S.sport,S.date,hr).amt))+'</button>';
       }
     });
   });
   $('grid').innerHTML=h+'</div>';
-  var lg='<span><i class="sw free"></i>Open'+(staff?'':' (price per hour)')+'</span><span><i class="sw past"></i>Passed or closed</span>';
+  var lg='<span><i class="sw free"></i>Open'+(staff?'':' (price per hour)')+'</span>'+(staff?'<span>✓ checked in</span><span style="color:#c2410c">Orange outline: 15+ min late, not checked in</span>':'')+'<span><i class="sw past"></i>Passed or closed</span>';
   if(staff)lg+=Object.keys(SOURCES).map(function(s){return '<span><i class="sw s-'+s+'"></i>'+CODES[s]+' '+SOURCES[s]+'</span>'}).join('')+'<span>PB = pickleball, BD = badminton</span>';
   else lg+='<span><i class="sw sel"></i>Your pick</span><span><i class="sw s-hold"></i>Taken</span>';
   $('legend').innerHTML=lg;
@@ -272,20 +288,22 @@ function authBox(){
 function signInBox(){return authBox()}
 function panelBook(){
   if(S.authMode==='reset'||(!S.user&&S.showAuth))return authBox();
-  if(S.done){var d=S.done;return '<h2>Court booked</h2><div class="ref" id="refbox">'+esc(d.reference)+'</div><dl><dt>Court</dt><dd>'+esc(d.court)+' · '+SPORTS[d.sport]+'</dd><dt>When</dt><dd>'+esc(fmtTs(d.start_time))+' – '+esc(fmt(hourOf(d.end_time)))+'</dd><dt>Amount</dt><dd>$'+Number(d.price)+', pay at the club</dd></dl><p class="muted">Show this reference at the front desk. You can see and cancel it under My bookings.</p><button class="btn" data-act="again">Book another</button>'}
-  if(!S.sel)return '<h2>Reserve a court</h2><p>Pick an open slot on the grid. Each square is one hour on one court.</p><dl><dt>Off-peak</dt><dd>Weekdays before '+fmt(S.settings.peak_start_hour)+'. Pickleball $'+S.rates.pickleball_o+', badminton $'+S.rates.badminton_o+'.</dd><dt>Peak</dt><dd>Weekdays from '+fmt(S.settings.peak_start_hour)+' and all weekend. Pickleball $'+S.rates.pickleball_p+', badminton $'+S.rates.badminton_p+'.</dd><dt>Payment</dt><dd>At the club.</dd></dl>';
+  if(S.pending&&!S.done){var pd=S.pending,left=holdLeft(pd);if(left<=0&&!S.busyBtn){S.pending=null}else return '<h2>Complete your payment</h2><p class="when">'+esc(pd.court)+' · '+SPORTS[pd.sport]+'<br>'+esc(fmtTs(pd.start_time))+' – '+esc(fmt(hourOf(pd.end_time)))+'</p><div class="price"><span class="muted">To pay</span><b>'+money(pd.price)+'</b></div><p class="muted">This slot is held for you for '+Math.floor(left/60)+':'+pad(left%60)+' more. If the time runs out, the slot is released.</p>'+(S.err?'<div class="err" role="alert">'+esc(S.err)+'</div>':'')+(S.verifying?'<p>Confirming your payment…</p>':'<button class="btn" data-act="pay" data-id="'+esc(pd.id)+'"'+(S.busyBtn?' disabled':'')+'>Pay '+money(pd.price)+'</button><button class="btn ghost" data-act="pay-release" data-id="'+esc(pd.id)+'"'+(S.busyBtn?' disabled':'')+'>Release this slot</button>')}
+  if(S.done){var d=S.done;return '<h2>Court booked</h2><div class="ref" id="refbox">'+esc(d.reference)+'</div><dl><dt>Court</dt><dd>'+esc(d.court)+' · '+SPORTS[d.sport]+'</dd><dt>When</dt><dd>'+esc(fmtTs(d.start_time))+' – '+esc(fmt(hourOf(d.end_time)))+'</dd><dt>Amount</dt><dd>'+money(d.price)+(d.paid?', paid':', pay at the club')+'</dd></dl><p class="muted">Show this reference and a photo ID at the front desk, and tell staff who is playing with you. You can see and cancel it under My bookings.</p><button class="btn" data-act="again">Book another</button>'}
+  if(!S.sel)return '<h2>Reserve a court</h2><p>Pick an open slot on the grid. Each square is one hour on one court.</p><dl><dt>Off-peak</dt><dd>Weekdays before '+fmt(S.settings.peak_start_hour)+'. Pickleball '+money(S.rates.pickleball_o)+', badminton '+money(S.rates.badminton_o)+'.</dd><dt>Peak</dt><dd>Weekdays from '+fmt(S.settings.peak_start_hour)+' and all weekend. Pickleball '+money(S.rates.pickleball_p)+', badminton '+money(S.rates.badminton_p)+'.</dd><dt>Payment</dt><dd>'+(S.settings.payment_required?'Online when you book. Cancel at least '+S.settings.cancel_cutoff_hours+' hour'+(S.settings.cancel_cutoff_hours===1?'':'s')+' before the start and it becomes credit for your next booking.':'At the club.')+'</dd></dl>';
   var c=S.courts.find(function(x){return x.id===S.sel.c}),h=S.sel.h,can2=S.settings.max_hours>=2&&hoursFor(c).indexOf(h+1)>-1&&isFree(c.id,h+1);
   var tot=0,peak=false;for(var i=0;i<S.dur;i++){var p=priceFor(S.sport,S.date,h+i);tot+=p.amt;if(p.peak)peak=true}
+  var useCr=S.settings.payment_required&&S.user&&S.credit>0&&S.useCredit!==false,crAmt=useCr?Math.min(S.credit,tot):0,due=tot-crAmt;
   return '<h2>'+esc(c.name)+' · '+SPORTS[S.sport]+'</h2><p class="when">'+esc(dlabel(S.date))+' · '+fmt(h)+' – '+fmt(h+S.dur)+'</p>'+
    '<div class="seg" role="group" aria-label="Duration"><button data-act="dur" data-v="1" aria-pressed="'+(S.dur===1)+'">1 hour</button><button data-act="dur" data-v="2" aria-pressed="'+(S.dur===2)+'"'+(can2?'':' disabled')+'>2 hours</button></div>'+
-   '<div class="price"><span class="muted">'+(peak?'Peak rate':'Off-peak rate')+'</span><b>$'+tot+'</b></div>'+
-   (S.user?'<label>Your name<input id="f-name" data-f="name" autocomplete="name" value="'+esc(S.form.name)+'"></label><label>Phone (optional)<input id="f-phone" data-f="phone" type="tel" autocomplete="tel" value="'+esc(S.form.phone)+'"></label>'+(S.err?'<div class="err" role="alert">'+esc(S.err)+'</div>':'')+'<button class="btn" data-act="book"'+(S.busyBtn?' disabled':'')+'>'+(S.busyBtn?'Booking…':'Confirm booking · $'+tot)+'</button><p class="muted">Pay at the club. The server confirms the final price.</p>':signInBox());
+   '<div class="price"><span class="muted">'+(peak?'Peak rate':'Off-peak rate')+'</span><b>'+money(tot)+'</b></div>'+
+   (S.user&&S.settings.payment_required&&S.credit>0?'<label class="check"><input type="checkbox" data-f="useCredit"'+(S.useCredit!==false?' checked':'')+'>Use my credit ('+money(S.credit)+')</label>'+(useCr?'<div class="muted">Credit −'+money(crAmt)+' · to pay '+money(due)+'</div>':''):'')+(S.user?'<label>Your name<input id="f-name" data-f="name" autocomplete="name" value="'+esc(S.form.name)+'"></label><label>Phone (optional)<input id="f-phone" data-f="phone" type="tel" autocomplete="tel" value="'+esc(S.form.phone)+'"></label>'+(S.err?'<div class="err" role="alert">'+esc(S.err)+'</div>':'')+'<button class="btn" data-act="book"'+(S.busyBtn?' disabled':'')+'>'+(S.busyBtn?'Booking…':(S.settings.payment_required?(due<=0?'Book with credit':'Pay '+money(due)+' to book'):'Confirm booking · '+money(tot)))+'</button>'+(S.settings.payment_required?'<p class="muted">You pay now to confirm. Cancel up to '+S.settings.cancel_cutoff_hours+' hour'+(S.settings.cancel_cutoff_hours===1?'':'s')+' before the start and the amount is added to your credit for a future booking. After that the booking cannot be cancelled.</p>':'<p class="muted">Pay at the club. The server confirms the final price.</p>')+'':signInBox());
 }
 function panelStaff(){
-  if(!S.mSel)return '<h2>Day control</h2><p>Select any square. Open squares take phone bookings, lessons, leagues and maintenance blocks. Booked squares show who has them and let you cancel.</p><p class="muted">The database refuses any second booking for the same court and time, whichever source it comes from.</p>';
+  if(!S.mSel)return (S.staffMsg?'<div class="okmsg" role="status">'+esc(S.staffMsg)+'</div>':'')+'<h2>Day control</h2><p>Select any square. Open squares take phone bookings, lessons, leagues and maintenance blocks. Booked squares show who has them and let you cancel.</p><p class="muted">The database refuses any second booking for the same court and time, whichever source it comes from.</p>';
   var c=S.courts.find(function(x){return x.id===S.mSel.c}),h=S.mSel.h,rec=staffRec(c.id,h);
-  if(rec){return '<h2>'+esc(c.name)+'</h2><p class="when">'+esc(fmtTs(rec.start_time))+' – '+esc(fmt(hourOf(rec.end_time)))+'</p><dl><dt>Held by</dt><dd>'+esc(rec.player_name||rec.label||'—')+'</dd><dt>Phone</dt><dd>'+esc(rec.player_phone||'—')+'</dd><dt>Source</dt><dd>'+esc(SOURCES[rec.source])+'</dd><dt>Sport</dt><dd>'+esc(SPORTS[rec.sport]||'—')+'</dd><dt>Reference</dt><dd style="font-family:var(--font-mono)">'+esc(rec.reference)+'</dd></dl>'+(S.err?'<div class="err" role="alert">'+esc(S.err)+'</div>':'')+
-    (S.confirmCancel?'<p class="err">'+(rec.blockId?'Remove this block?':'Cancel this booking and free the court?')+'</p><div class="row"><button class="btn danger" data-act="cancel-yes" data-id="'+esc(rec.id)+'"'+(S.busyBtn?' disabled':'')+'>Yes</button><button class="btn ghost" data-act="cancel-no">Keep it</button></div>':'<button class="btn ghost" data-act="cancel">'+(rec.blockId?'Remove block':'Cancel booking')+'</button>');}
+  if(rec){return '<h2>'+esc(c.name)+'</h2><p class="when">'+esc(fmtTs(rec.start_time))+' – '+esc(fmt(hourOf(rec.end_time)))+'</p><dl><dt>Held by</dt><dd>'+esc(rec.player_name||rec.label||'—')+'</dd><dt>Phone</dt><dd>'+esc(rec.player_phone||'—')+'</dd><dt>Source</dt><dd>'+esc(SOURCES[rec.source])+'</dd><dt>Sport</dt><dd>'+esc(SPORTS[rec.sport]||'—')+'</dd>'+(rec.checked_in_at?'<dt>Checked in</dt><dd>'+esc(new Date(rec.checked_in_at).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit',timeZone:S.settings.timezone}))+' · '+rec.guest_count+' guest'+(+rec.guest_count===1?'':'s')+(rec.check_in_note?' · '+esc(rec.check_in_note):'')+'</dd>':'')+'<dt>Payment</dt><dd>'+esc(rec.status==='pending_payment'?'Awaiting payment':rec.payment_status==='paid'?'Paid '+money(rec.price,rec.currency):rec.source==='web'?'Pay at the club':'—')+'</dd><dt>Reference</dt><dd style="font-family:var(--font-mono)">'+esc(rec.reference)+'</dd></dl>'+(S.err?'<div class="err" role="alert">'+esc(S.err)+'</div>':'')+
+    (rec.blockId||rec.status!=='confirmed'?'':rec.checked_in_at?'<button class="btn ghost" data-act="undo-in" data-id="'+esc(rec.id)+'"'+(S.busyBtn?' disabled':'')+'>Undo check-in</button>':(function(){var n=new Date(),st=new Date(rec.start_time),en=new Date(rec.end_time);if(n<new Date(st-30*60000)||n>en)return '<p class="muted">Check-in opens 30 minutes before the start.</p>';return '<div class="setbox" style="background:var(--bg)"><b>Check in</b><p class="muted">Confirm the person is who booked (ask for the reference or ID) and count anyone with them.</p><label>Guests with them<input id="f-guests" data-f="guests" type="number" min="0" max="20" inputmode="numeric" value="'+esc(S.form.guests||'0')+'"></label><label>Note (optional)<input id="f-cnote" data-f="cnote" placeholder="e.g. ID checked" value="'+esc(S.form.cnote||'')+'"></label><button class="btn" data-act="check-in" data-id="'+esc(rec.id)+'"'+(S.busyBtn?' disabled':'')+'>Check in</button></div>'})())+(rec.source==='web'&&rec.status==='confirmed'&&!rec.blockId&&!rec.checked_in_at&&new Date(rec.start_time)<=new Date()?(S.confirmNoShow?'<p class="err">Mark this as a no-show and reopen the slot?</p><div class="row"><button class="btn danger" data-act="noshow-yes" data-id="'+esc(rec.id)+'"'+(S.busyBtn?' disabled':'')+'>Yes, no-show</button><button class="btn ghost" data-act="noshow-no">Not yet</button></div>':'<button class="btn" data-act="noshow">Mark no-show</button>'):'')+(S.confirmCancel?'<p class="err">'+(rec.blockId?'Remove this block?':'Cancel this booking and free the court?'+(rec.payment_status==="paid"?' The player gets '+money(rec.price,rec.currency)+' as credit.':''))+'</p><div class="row"><button class="btn danger" data-act="cancel-yes" data-id="'+esc(rec.id)+'"'+(S.busyBtn?' disabled':'')+'>Yes</button><button class="btn ghost" data-act="cancel-no">Keep it</button></div>':'<button class="btn ghost" data-act="cancel">'+(rec.blockId?'Remove block':'Cancel booking')+'</button>');}
   var t=S.form.stype,maxLen=Math.min(4,parseInt(c.close_time,10)-h),o='';for(var i=1;i<=maxLen;i++)o+='<option value="'+i+'"'+(+S.form.slen===i?' selected':'')+'>'+i+' hour'+(i>1?'s':'')+'</option>';
   return '<h2>'+esc(c.name)+'</h2><p class="when">'+esc(dlabel(S.date))+' · from '+fmt(h)+'</p><label>Type<select id="f-stype" data-f="stype"><option value="desk"'+(t==='desk'?' selected':'')+'>Phone or walk-up booking</option><option value="program"'+(t==='program'?' selected':'')+'>Lesson or league</option><option value="hold"'+(t==='hold'?' selected':'')+'>Maintenance block</option></select></label>'+
    (t==='desk'?'<label>Player name<input id="f-sname" data-f="name" value="'+esc(S.form.name)+'"></label><label>Phone (optional)<input id="f-sphone" data-f="phone" value="'+esc(S.form.phone)+'"></label>':'<label>'+(t==='hold'?'Reason':'Programme name')+'<input id="f-reason" data-f="reason" value="'+esc(S.form.reason)+'"></label>')+
@@ -296,25 +314,101 @@ function renderPanel(){if(!S.ready){$('panel').innerHTML='';return}$('panel').in
 function renderMine(){
   var now=new Date();
   $('v-mine').innerHTML='<h2 style="margin-top:20px">My bookings</h2>'+(S.mine.length?'<div class="list">'+S.mine.map(function(b){
-    var up=new Date(b.end_time)>now&&b.status!=='cancelled';
-    return '<div class="item"><div><h3>'+esc(courtName(b.court_id))+' · '+SPORTS[b.sport]+'</h3><div>'+esc(fmtTs(b.start_time))+' – '+esc(fmt(hourOf(b.end_time)))+' · $'+Number(b.price)+'</div><div class="muted" style="font-family:var(--font-mono)">'+esc(b.reference)+'</div></div><div class="row" style="flex:none;align-items:center">'+(b.status==='cancelled'?'<span class="tag cx">Cancelled</span>':up?'<button class="btn ghost" data-act="mine-cancel" data-id="'+b.id+'">Cancel</button>':'<span class="tag cx">Past</span>')+'</div></div>'}).join('')+'</div>':'<p class="muted" style="margin-top:12px">No bookings yet.</p>')+(S.err?'<div class="err" role="alert" style="margin-top:10px">'+esc(S.err)+'</div>':'');
+    var up=new Date(b.end_time)>now&&b.status!=='cancelled';var pend=b.status==='pending_payment'&&holdLeft(b)>0,canC=new Date(b.start_time)-now>=S.settings.cancel_cutoff_hours*3600000;var PS={credited:'Added to your credit',refund_due:'Refund on its way',refunded:'Refunded',refund_failed:'Refund pending (club will follow up)'};
+    return '<div class="item"><div><h3>'+esc(courtName(b.court_id))+' · '+SPORTS[b.sport]+'</h3><div>'+esc(fmtTs(b.start_time))+' – '+esc(fmt(hourOf(b.end_time)))+' · '+money(b.price,b.currency)+'</div><div class="muted" style="font-family:var(--font-mono)">'+esc(b.reference)+'</div></div><div class="row" style="flex:none;align-items:center">'+(b.status==='cancelled'?'<span class="tag cx">'+(b.no_show?'No-show':'Cancelled')+(PS[b.payment_status]?' · '+PS[b.payment_status]:'')+'</span>':pend?'<button class="btn" data-act="mine-pay" data-id="'+b.id+'"'+(S.busyBtn?' disabled':'')+'>Pay now</button><button class="btn ghost" data-act="mine-cancel" data-id="'+b.id+'">Release</button>':b.status==='pending_payment'?'<span class="tag cx">Expired</span>':up?(canC?'<button class="btn ghost" data-act="mine-cancel" data-id="'+b.id+'">Cancel'+(b.payment_status==='paid'?' for credit':'')+'</button>':'<span class="tag cx">No cancellation now</span>'):(b.checked_in_at?'<span class="tag cx">Attended</span>':'<span class="tag cx">Past</span>'))+'</div></div>'}).join('')+'</div>':'<p class="muted" style="margin-top:12px">No bookings yet.</p>')+(S.mineMsg?'<div class="okmsg" role="status" style="margin-top:10px">'+esc(S.mineMsg)+'</div>':'')+(S.err?'<div class="err" role="alert" style="margin-top:10px">'+esc(S.err)+'</div>':'');
 }
 function renderAll(){
   renderHead();
-  var g=S.view==='book'||S.view==='staff';$('v-grid').hidden=!g;$('v-mine').hidden=S.view!=='mine';$('v-settings').hidden=S.view!=='settings';
-  if(g){renderToolbar();renderStats();renderGrid();renderPanel()}else if(S.view==='mine')renderMine();else renderSettings();
+  var g=S.view==='book'||S.view==='staff';$('v-grid').hidden=!g;$('v-mine').hidden=S.view!=='mine';$('v-settings').hidden=S.view!=='settings';$('v-profile').hidden=S.view!=='profile';$('v-people').hidden=S.view!=='people';
+  if(g){renderToolbar();renderStats();renderGrid();renderPanel()}else if(S.view==='mine')renderMine();else if(S.view==='profile')renderProfile();else if(S.view==='people')renderPeople();else renderSettings();
 }
 
 /* ---------- actions ---------- */
 async function refresh(){if(S.view==='settings')return;try{await loadAvailability();S.loadErr=''}catch(e){S.loadErr='Could not load availability. Check your connection.'}
   if(S.view==='mine')renderMine();else{renderGrid();renderStats();renderHead()}}
+
+
+/* ---------- profile and customers ---------- */
+var LREASON={cancel_credit:'Cancelled booking',no_show_credit:'No-show credit',spent:'Used on a booking',hold_released:'Unpaid hold released',admin_adjust:'Adjusted by the club'};
+function renderProfile(){
+  var el=$('v-profile');if(!S.user){el.innerHTML='';return}
+  var led=S.ledger;
+  el.innerHTML='<h2 style="margin-top:20px">Profile</h2><div class="setgrid">'+
+   '<div class="setbox"><h3>Your details</h3><label>Email<input value="'+esc(S.user.email)+'" disabled></label><label>Name<input id="f-pname" data-f="name" autocomplete="name" value="'+esc(S.form.name)+'"></label><label>Phone<input id="f-pphone" data-f="phone" type="tel" autocomplete="tel" value="'+esc(S.form.phone)+'"></label>'+
+   (S.pmsg?'<div class="'+(S.pmsgOk?'okmsg':'err')+'" role="alert">'+esc(S.pmsg)+'</div>':'')+'<button class="btn" data-act="save-profile"'+(S.busyBtn?' disabled':'')+'>Save details</button></div>'+
+   '<div class="setbox"><h3>Credit</h3><div class="price"><span class="muted">Balance</span><b>'+money(S.credit||0)+'</b></div><p class="muted">Credit is used automatically on your next booking. You get it when you cancel in time'+(S.settings.no_show_credit_percent>0?' or if the club records a no-show ('+S.settings.no_show_credit_percent+'% back)':'')+'.</p>'+
+   (S.myNoShows?'<p class="muted">No-shows on record: '+S.myNoShows+'</p>':'')+
+   (led===null?'<p class="muted">Loading…</p>':led.length?'<div class="list" style="margin-top:0">'+led.map(function(x){return '<div class="item" style="padding:8px 12px"><div><div>'+esc(LREASON[x.reason]||x.reason)+(x.note?' · '+esc(x.note):'')+'</div><div class="muted">'+esc(new Date(x.created_at).toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'}))+'</div></div><b style="color:'+(Number(x.amount)<0?'var(--muted)':'var(--ok)')+'">'+(Number(x.amount)>0?'+':'−')+money(Math.abs(Number(x.amount)))+'</b></div>'}).join('')+'</div>':'<p class="muted">No credit activity yet.</p>')+'</div></div>';
+}
+async function saveProfile(){
+  var n=(S.form.name||'').trim();if(!n){S.pmsg='Enter your name.';S.pmsgOk=false;return renderProfile()}
+  S.busyBtn=true;renderProfile();
+  var r=await sb.from('profiles').update({full_name:n,phone:(S.form.phone||'').trim()||null}).eq('id',S.user.id).select();
+  S.busyBtn=false;S.pmsgOk=!(r.error||!r.data||!r.data.length);S.pmsg=S.pmsgOk?'Saved.':'Could not save. Please try again.';renderProfile();
+}
+function renderPeople(){
+  var el=$('v-people'),L=S.people;
+  if(L===null){el.innerHTML='<p class="muted" style="margin-top:20px">Loading customers…</p>';return}
+  var m=S.pplMsg||{};
+  el.innerHTML='<h2 style="margin-top:20px">Customers</h2><p class="muted" style="margin-top:6px">Add or remove credit for a customer. Credit is in '+esc(S.settings.currency)+' and is used automatically on their next booking.</p><div class="list">'+
+   (L.length?L.map(function(c){return '<div class="item"><div><h3>'+esc(c.full_name||c.email)+'</h3><div class="muted">'+esc(c.email)+(c.phone?' · '+esc(c.phone):'')+'</div><div>'+c.bookings+' booking'+(+c.bookings===1?'':'s')+(+c.no_shows?' · <b>'+c.no_shows+' no-show'+(+c.no_shows===1?'':'s')+'</b>':'')+'</div></div>'+
+    '<div class="row" style="flex:none;align-items:flex-end;flex-wrap:wrap;gap:8px"><div><span class="muted">Credit</span><br><b style="font-size:20px">'+money(c.credit)+'</b></div>'+
+    '<label style="margin:0">Amount (+ or −)<input style="width:110px" type="number" step="0.5" inputmode="decimal" data-ppl="'+c.id+'.amt" value="'+esc((S.pplIn&&S.pplIn[c.id]&&S.pplIn[c.id].amt)||'')+'"></label>'+
+    '<label style="margin:0">Reason<input style="width:170px" data-ppl="'+c.id+'.note" value="'+esc((S.pplIn&&S.pplIn[c.id]&&S.pplIn[c.id].note)||'')+'"></label>'+
+    '<button class="btn ghost" data-act="adj" data-id="'+c.id+'"'+(S.busyBtn?' disabled':'')+'>Apply</button></div>'+(m[c.id]?'<div class="'+(m[c.id].ok?'okmsg':'err')+'" role="alert" style="flex-basis:100%">'+esc(m[c.id].t)+'</div>':'')+'</div>'}).join(''):'<p class="muted">No customers yet.</p>')+'</div>';
+}
+async function doAdjust(id){
+  var i=(S.pplIn&&S.pplIn[id])||{},amt=parseFloat(i.amt);S.pplMsg={};
+  if(!amt){S.pplMsg[id]={t:'Enter an amount, like 200 or −100.'};return renderPeople()}
+  if(!(i.note||'').trim()){S.pplMsg[id]={t:'Add a short reason.'};return renderPeople()}
+  S.busyBtn=true;renderPeople();var r=await sb.rpc('admin_adjust_credit',{p_user:id,p_amount:amt,p_note:i.note.trim()});S.busyBtn=false;
+  if(r.error){S.pplMsg[id]={t:/insufficient_credit/.test(r.error.message||'')?'That would take their credit below zero.':'Could not apply that.'};return renderPeople()}
+  S.pplIn[id]={};S.pplMsg[id]={ok:true,t:'Done. New balance '+money(r.data)+'.'};await loadPeople();
+}
+
+/* ---------- online payment (Razorpay) ---------- */
+var RZP=null;
+function loadRzp(){if(window.Razorpay)return Promise.resolve();if(RZP)return RZP;RZP=new Promise(function(ok,no){var s=document.createElement('script');s.src='https://checkout.razorpay.com/v1/checkout.js';s.onload=ok;s.onerror=function(){RZP=null;no(new Error('load'))};document.head.appendChild(s)});return RZP}
+function payMsg(code){return ERR[code]||ERR.network}
+async function callPay(body){
+  try{var r=await sb.functions.invoke('pay',{body:body});
+    if(r.error){var m='';try{var j=await r.error.context.json();m=j.error||''}catch(e){}return {error:m||'network'}}
+    return r.data||{}}catch(e){return {error:'network'}}
+}
+function holdLeft(b){return b&&b.hold_expires_at?Math.max(0,Math.floor((new Date(b.hold_expires_at)-new Date())/1000)):0}
+async function releaseHold(id){await sb.rpc('cancel_booking',{p_booking_id:id})}
+async function startPayment(b){
+  S.err='';S.busyBtn=true;renderPanel();renderMine();
+  var o=await callPay({action:'create_order',booking_id:b.id});
+  if(o.error){
+    S.busyBtn=false;S.err=payMsg(o.error);
+    if(o.error==='payments_not_configured'||o.error==='order_failed'||o.error==='hold_expired'){await releaseHold(b.id);S.pending=null}
+    await refresh();await loadMine();renderPanel();renderMine();return}
+  try{await loadRzp()}catch(e){S.busyBtn=false;S.err='Could not load the payment window. Check your connection and try again.';renderPanel();renderMine();return}
+  var rz=new window.Razorpay({key:o.key_id,order_id:o.order_id,amount:o.amount,currency:o.currency,name:'Smash & Volley',description:'Court booking '+o.reference,
+    prefill:{name:(S.form&&S.form.name)||b.player_name||'',email:S.user?S.user.email:'',contact:(S.form&&S.form.phone)||b.player_phone||''},theme:{color:'#17594d'},
+    handler:async function(resp){
+      S.busyBtn=true;S.verifying=true;renderPanel();renderMine();
+      var v=await callPay({action:'verify',booking_id:b.id,razorpay_order_id:resp.razorpay_order_id,razorpay_payment_id:resp.razorpay_payment_id,razorpay_signature:resp.razorpay_signature});
+      S.busyBtn=false;S.verifying=false;
+      if(v.error){S.err=payMsg(v.error)+' Check My bookings in a minute.'}
+      else if(v.status==='expired'){S.pending=null;S.err='Your payment arrived after the hold expired, so the slot was released. '+(v.refunded?'The money is being refunded to you.':'We will refund you; please contact the club if it does not arrive.')}
+      else{var pb=S.pending&&S.pending.id===b.id?S.pending:b;S.done={reference:pb.reference,court:pb.court||courtName(pb.court_id),sport:pb.sport,start_time:pb.start_time,end_time:pb.end_time,price:pb.price,paid:true};S.pending=null;S.err=''}
+      var cb2=await sb.rpc('my_credit');S.credit=Number(cb2&&cb2.data)||0;await refresh();await loadMine();renderPanel();renderMine()},
+    modal:{ondismiss:function(){S.busyBtn=false;renderPanel();renderMine()}}});
+  rz.on('payment.failed',function(){S.err='That payment did not go through. You can try again before the hold runs out.'});
+  rz.open();
+}
+async function doRefund(id){var r=await callPay({action:'refund',booking_id:id});return r}
 async function doBook(){
   var f=S.form;S.err='';if(!f.name.trim()){S.err='Enter your name.';return renderPanel()}
   var c=S.courts.find(function(x){return x.id===S.sel.c});S.busyBtn=true;renderPanel();
-  var r=await sb.rpc('create_booking',{p_court_id:c.id,p_sport:S.sport,p_start:zoned(S.date,S.sel.h,S.settings.timezone).toISOString(),p_hours:S.dur,p_player_name:f.name.trim(),p_player_phone:f.phone.trim()||null});
+  var r=await sb.rpc('create_booking',{p_court_id:c.id,p_sport:S.sport,p_start:zoned(S.date,S.sel.h,S.settings.timezone).toISOString(),p_hours:S.dur,p_player_name:f.name.trim(),p_player_phone:f.phone.trim()||null,p_use_credit:S.useCredit!==false});
   S.busyBtn=false;
   if(r.error){S.err=errText(r.error);await refresh();if(S.sel&&!isFree(S.sel.c,S.sel.h)){S.sel=null;S.dur=1}return renderPanel()}
-  S.done={reference:r.data.reference,court:c.name,sport:S.sport,start_time:r.data.start_time,end_time:r.data.end_time,price:r.data.price};S.sel=null;S.dur=1;
+  S.sel=null;S.dur=1;var cb=await sb.rpc('my_credit');S.credit=Number(cb&&cb.data)||0;
+  if(r.data.status==='pending_payment'){S.pending=Object.assign({court:c.name,sport:S.sport},r.data);await refresh();renderPanel();return startPayment(S.pending)}
+  S.done={reference:r.data.reference,court:c.name,sport:S.sport,start_time:r.data.start_time,end_time:r.data.end_time,price:r.data.price,paid:r.data.payment_status==='paid'};
   await refresh();renderPanel();
 }
 async function doStaffAdd(){
@@ -329,14 +423,33 @@ async function doStaffAdd(){
   else{S.form.name='';S.form.phone='';S.form.reason='';S.form.slen=1}
   await refresh();renderPanel();
 }
+async function doCheckIn(id){
+  var g=parseInt(S.form.guests,10);if(isNaN(g)||g<0||g>20){S.err='Guests must be a number from 0 to 20.';return renderPanel()}
+  S.busyBtn=true;S.err='';renderPanel();var r=await sb.rpc('check_in',{p_booking_id:id,p_guests:g,p_note:(S.form.cnote||'').trim()||null});S.busyBtn=false;
+  if(r.error){var m=r.error.message||'';S.err=/too_early/.test(m)?'Check-in opens 30 minutes before the start.':/already_over/.test(m)?'That booking has already ended.':errText(r.error)}
+  else{S.form.guests='0';S.form.cnote='';S.staffMsg='Checked in'+(g?' with '+g+' guest'+(g===1?'':'s'):'')+'.'}
+  await refresh();renderGrid();renderPanel();
+}
+async function doUndoCheckIn(id){
+  S.busyBtn=true;renderPanel();var r=await sb.rpc('undo_check_in',{p_booking_id:id});S.busyBtn=false;if(r.error)S.err=errText(r.error);
+  await refresh();renderGrid();renderPanel();
+}
+async function doNoShow(id){
+  S.busyBtn=true;renderPanel();var r=await sb.rpc('mark_no_show',{p_booking_id:id});S.busyBtn=false;S.confirmNoShow=false;
+  if(r.error)S.err=/not_started/.test(r.error.message||'')?'You can mark a no-show once the booking has started.':errText(r.error);
+  else{S.mSel=null;S.err='';S.staffMsg='Marked as a no-show. The slot is open again for walk-ins'+(r.data.payment_status==='credited'?' and the player was given credit.':'.')}
+  await refresh();renderPanel();
+}
 async function doStaffCancel(id){
   S.busyBtn=true;renderPanel();var rec=S.staffRows.find(function(x){return String(x.id)===id}),res;
   if(rec&&rec.blockId)res=await sb.from('blocked_slots').delete().eq('id',rec.blockId);else res=await sb.rpc('cancel_booking',{p_booking_id:id});
-  S.busyBtn=false;S.confirmCancel=false;if(res.error)S.err=errText(res.error);else{S.mSel=null;S.err=''}
+  S.busyBtn=false;S.confirmCancel=false;if(res.error)S.err=errText(res.error);else{S.mSel=null;S.err='';if(res.data&&res.data.payment_status==='credited')S.staffMsg=money(res.data.price,res.data.currency)+' was added to the player\'s credit.'}
   await refresh();renderPanel();
 }
 async function doMineCancel(id){
-  S.err='';var r=await sb.rpc('cancel_booking',{p_booking_id:id});if(r.error)S.err=errText(r.error);
+  S.err='';S.mineMsg='';var r=await sb.rpc('cancel_booking',{p_booking_id:id});if(r.error)S.err=errText(r.error);
+  else if(r.data&&r.data.payment_status==='credited'){var cb=await sb.rpc('my_credit');S.credit=Number(cb&&cb.data)||0;S.mineMsg='Cancelled. '+money(r.data.price,r.data.currency)+' has been added to your credit and will be used on your next booking.'}
+  if(S.pending&&S.pending.id===id)S.pending=null;
   await loadMine();renderMine();
 }
 function authErr(e){
@@ -394,15 +507,20 @@ function renderSettings(){
   var el=$('v-settings');
   if(!S.cfg){el.innerHTML='<p class="muted" style="margin-top:20px">Loading settings…</p>';return}
   var s=S.cfg.s,r=S.cfg.r,b=S.busyBtn?' disabled':'';
-  var rate=function(sp,pk,lab){return '<label>'+lab+' ($ per hour)<input type="number" min="0" step="0.5" inputmode="decimal" data-k="r.'+sp+'_'+pk+'" value="'+esc(r[sp+'_'+pk]!=null?r[sp+'_'+pk]:'')+'"></label>'};
+  var curSym=function(){return money(0,s.currency).replace(/[\d.,\s]/g,'')||s.currency};
+  var rate=function(sp,pk,lab){return '<label>'+lab+' ('+curSym()+' per hour)<input type="number" min="0" step="0.5" inputmode="decimal" data-k="r.'+sp+'_'+pk+'" value="'+esc(r[sp+'_'+pk]!=null?r[sp+'_'+pk]:'')+'"></label>'};
   el.innerHTML='<h2 style="margin-top:20px">Settings</h2><p class="muted" style="margin-top:6px">Changes apply to new bookings straight away. Existing bookings are not changed.</p><div class="setgrid">'+
   '<div class="setbox"><h3>Club</h3>'+
+   '<label>Currency<select data-k="s.currency">'+CURS.map(function(c){return '<option value="'+c[0]+'"'+(s.currency===c[0]?' selected':'')+'>'+c[0]+' · '+c[1]+'</option>'}).join('')+'</select><span class="muted">Rates are shown in this currency. Existing bookings keep the currency they were made in.</span></label>'+
    '<label>Time zone<input list="tzlist" data-k="s.timezone" value="'+esc(s.timezone)+'" autocomplete="off"></label><datalist id="tzlist">'+TZS.map(function(z){return '<option value="'+z+'">'}).join('')+'</datalist>'+
    '<label>Peak rates start at<select data-k="s.peak_start_hour">'+hourOpts(s.peak_start_hour,0,23)+'</select></label>'+
    '<label>Longest booking<select data-k="s.max_hours">'+numOpts(s.max_hours,1,4,'hour')+'</select></label>'+
    '<label>Upcoming bookings per player<select data-k="s.max_upcoming_per_user">'+numOpts(s.max_upcoming_per_user,1,20)+'</select></label>'+
    '<label>Players can cancel until<select data-k="s.cancel_cutoff_hours">'+numOpts(s.cancel_cutoff_hours,0,48,'hour')+'</select><span class="muted">before the start time</span></label>'+
    '<label>Bookable days ahead<select data-k="s.max_days_ahead">'+numOpts(s.max_days_ahead,1,60,'day')+'</select></label>'+
+   '<label class="check"><input type="checkbox" data-k="s.payment_required"'+(s.payment_required?' checked':'')+'>Take payment online when players book</label><span class="muted">Turn this on only after the Razorpay keys are added (see README). Players cancel until the cutoff above and get the amount back as credit, not money. After the cutoff they cannot cancel.</span>'+
+   '<label>Credit given for a no-show (%)<input type="number" min="0" max="100" step="5" data-k="s.no_show_credit_percent" value="'+esc(s.no_show_credit_percent!=null?s.no_show_credit_percent:100)+'"></label>'+
+   '<label>Hold the slot while paying<select data-k="s.hold_minutes">'+numOpts(s.hold_minutes||10,5,30,'minute')+'</select></label>'+
    cfgMsg('club')+'<button class="btn" data-act="save-club"'+b+'>Save club settings</button></div>'+
   '<div class="setbox"><h3>Rates</h3><p class="muted">Peak is weekends, and weekdays from the peak start time above.</p>'+
    rate('pickleball','o','Pickleball off-peak')+rate('pickleball','p','Pickleball peak')+rate('badminton','o','Badminton off-peak')+rate('badminton','p','Badminton peak')+
@@ -422,7 +540,7 @@ async function saveCfg(sec){
       var s=c.s,tz=String(s.timezone||'').trim();
       try{new Intl.DateTimeFormat('en-US',{timeZone:tz})}catch(e){S.cfgMsg.club={t:'That time zone is not valid. Example: America/New_York.'};return renderSettings()}
       S.busyBtn=true;renderSettings();
-      res=await sb.from('club_settings').update({timezone:tz,peak_start_hour:+s.peak_start_hour,max_hours:+s.max_hours,max_upcoming_per_user:+s.max_upcoming_per_user,cancel_cutoff_hours:+s.cancel_cutoff_hours,max_days_ahead:+s.max_days_ahead}).eq('id',true).select();
+      res=await sb.from('club_settings').update({no_show_credit_percent:Math.min(100,Math.max(0,Math.round(+s.no_show_credit_percent||0))),payment_required:!!s.payment_required,hold_minutes:+s.hold_minutes||10,currency:s.currency||'USD',timezone:tz,peak_start_hour:+s.peak_start_hour,max_hours:+s.max_hours,max_upcoming_per_user:+s.max_upcoming_per_user,cancel_cutoff_hours:+s.cancel_cutoff_hours,max_days_ahead:+s.max_days_ahead}).eq('id',true).select();
     }else if(sec==='rates'){
       var rows=[],bad=false;['pickleball','badminton'].forEach(function(sp){['o','p'].forEach(function(pk){var v=parseFloat(c.r[sp+'_'+pk]);if(!(v>=0))bad=true;rows.push({sport:sp,peak:pk==='p',price:v})})});
       if(bad){S.cfgMsg.rates={t:'Enter a price of 0 or more for every rate.'};return renderSettings()}
@@ -460,26 +578,37 @@ document.addEventListener('click',function(e){
   else if(a==='show-auth'){S.showAuth=true;S.authMode='signin';S.authMsg='';S.sel=null;renderGrid();renderPanel()}
   else if(a==='auth-mode'){S.authMode=t.dataset.m;S.authMsg='';S.authOk=false;renderPanel()}
   else if(a==='signout'){sb.auth.signOut().then(function(){S.user=null;S.isAdmin=false;S.mine=[];location.hash='#book';init(true)})}
-  else if(a==='open'){S.mSel={c:t.dataset.c,h:+t.dataset.h};S.err='';S.confirmCancel=false;renderGrid();renderPanel()}
+  else if(a==='open'){S.mSel={c:t.dataset.c,h:+t.dataset.h};S.err='';S.staffMsg='';S.confirmCancel=false;S.confirmNoShow=false;renderGrid();renderPanel()}
   else if(a==='staff-add')doStaffAdd();
   else if(a==='cancel'){S.confirmCancel=true;renderPanel()}
   else if(a==='cancel-no'){S.confirmCancel=false;renderPanel()}
   else if(a==='cancel-yes')doStaffCancel(t.dataset.id);
   else if(a==='mine-cancel')doMineCancel(t.dataset.id);
+  else if(a==='pay'||a==='mine-pay'){var pb=(S.pending&&S.pending.id===t.dataset.id)?S.pending:S.mine.find(function(x){return x.id===t.dataset.id});if(pb){if(!S.pending||S.pending.id!==pb.id)S.pending=Object.assign({court:courtName(pb.court_id)},pb);startPayment(S.pending)}}
+  else if(a==='pay-release'){releaseHold(t.dataset.id).then(function(){S.pending=null;S.err='';return refresh()}).then(renderPanel)}
+  else if(a==='save-profile')saveProfile();
+  else if(a==='adj')doAdjust(t.dataset.id);
+  else if(a==='check-in')doCheckIn(t.dataset.id);
+  else if(a==='undo-in')doUndoCheckIn(t.dataset.id);
+  else if(a==='noshow'){S.confirmNoShow=true;renderPanel()}
+  else if(a==='noshow-no'){S.confirmNoShow=false;renderPanel()}
+  else if(a==='noshow-yes')doNoShow(t.dataset.id);
   else if(a==='save-club')saveCfg('club');
   else if(a==='save-rates')saveCfg('rates');
   else if(a==='save-courts')saveCfg('courts');
 });
 document.addEventListener('submit',function(e){var fm=e.target;if(fm.dataset&&fm.dataset.form==='auth'){e.preventDefault();doAuth()}});
-document.addEventListener('input',function(e){setCfg(e.target);var f=e.target.dataset&&e.target.dataset.f;if(f)S.form[f]=e.target.value});
-document.addEventListener('change',function(e){setCfg(e.target);var f=e.target.dataset&&e.target.dataset.f;if(f==='stype'){S.form.stype=e.target.value;S.err='';renderPanel()}});
+document.addEventListener('input',function(e){if(e.target.dataset&&e.target.dataset.f==='useCredit')return;var pp=e.target.dataset&&e.target.dataset.ppl;if(pp){var q=pp.split('.');S.pplIn=S.pplIn||{};S.pplIn[q[0]]=S.pplIn[q[0]]||{};S.pplIn[q[0]][q[1]]=e.target.value}setCfg(e.target);var f=e.target.dataset&&e.target.dataset.f;if(f)S.form[f]=e.target.value});
+document.addEventListener('change',function(e){setCfg(e.target);var f=e.target.dataset&&e.target.dataset.f;if(f==='useCredit'){S.useCredit=e.target.checked;renderPanel();return}if(f==='stype'){S.form.stype=e.target.value;S.err='';renderPanel()}});
 async function route(){
-  var v=(location.hash||'#book').slice(1);if(['book','mine','staff','settings'].indexOf(v)<0)v='book';
-  if(v==='mine'&&!S.user)v='book';if((v==='staff'||v==='settings')&&!S.isAdmin)v='book';
+  var v=(location.hash||'#book').slice(1);if(['book','mine','staff','settings','profile','people'].indexOf(v)<0)v='book';
+  if((v==='mine'||v==='profile')&&!S.user)v='book';if((v==='staff'||v==='settings'||v==='people')&&!S.isAdmin)v='book';
   S.view=v;S.sel=null;S.mSel=null;S.err='';S.confirmCancel=false;S.dur=1;
   if(v==='mine')await loadMine();
+  if(v==='profile'){S.ledger=null;S.pmsg='';renderAll();await loadLedger()}
+  if(v==='people'){S.people=null;S.pplMsg={};renderAll();await loadPeople()}
   if(v==='settings'){S.cfg=null;try{await loadCfg()}catch(e){S.cfg=null}}
-  renderAll();if(S.ready&&v!=='mine')await refresh();
+  renderAll();if(S.ready&&v!=='mine'&&v!=='profile'&&v!=='people')await refresh();
 }
 window.addEventListener('hashchange',route);
 async function init(soft){
@@ -498,7 +627,8 @@ sb.auth.onAuthStateChange(function(ev,session){
     loadProfile().then(function(){S.authMsg='';S.showAuth=false;renderHead();route()});
   },0);
 });
-setInterval(function(){if(!document.hidden&&S.ready&&S.view!=='mine'&&S.view!=='settings'&&!S.busyBtn)refresh()},30000);
+setInterval(function(){if(S.pending&&S.view==='book'&&!S.busyBtn)renderPanel()},5000);
+setInterval(function(){if(!document.hidden&&S.ready&&S.view!=='mine'&&S.view!=='settings'&&S.view!=='profile'&&S.view!=='people'&&!S.busyBtn)refresh()},30000);
 renderAll();init();
 })();
 </script>
