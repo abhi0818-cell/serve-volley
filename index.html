@@ -65,6 +65,7 @@ button.cell.free:hover{border-color:var(--primary);color:var(--ink)}
 .cell.booked b{font:700 11px var(--font-body);letter-spacing:.06em}
 .cell.booked i{font-style:normal;font-size:10px;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .cell.booked.picked{outline:2px solid var(--ink);outline-offset:-2px}
+:root{--sp-pb:#b8610f;--sp-bd:#1f7a53}@media (prefers-color-scheme: dark){:root{--sp-pb:#f0a35c;--sp-bd:#5cc79a}}.sp-pickleball{--s:var(--sp-pb)}.sp-badminton{--s:var(--sp-bd)}.cell.booked.held{border-style:dashed;box-shadow:none}.cell svg.ic{width:26px;height:26px;flex:none}.cell .sn{font-style:normal;font-size:10px;line-height:1.1}.lg-ic{width:18px;height:18px;vertical-align:-4px;margin-right:4px}@media (max-width:640px){.cell .sn.nm{display:none}}
 .cell.in::after{content:'✓';position:absolute;top:2px;right:4px;font-weight:700}.cell.late{outline:2px solid #c2410c;outline-offset:-2px}.s-web{--s:var(--src-web)}.s-desk{--s:var(--src-desk)}.s-playtomic{--s:var(--src-playtomic)}.s-courtreserve{--s:var(--src-courtreserve)}.s-program{--s:var(--src-program)}.s-hold{--s:var(--src-hold)}
 .legend{display:flex;flex-wrap:wrap;gap:6px 18px;margin-top:12px;font-size:13px;color:var(--muted)}
 .legend span{display:inline-flex;align-items:center;gap:6px}
@@ -110,6 +111,7 @@ dt{color:var(--muted)}dd{margin:0;min-width:0;overflow-wrap:anywhere}
 </style>
 </head>
 <body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs><symbol id="ic-pb-both" viewBox="0 0 24 24"><path fill="currentColor" d="M18.575 22L12.7 16.125q-.725.65-1.612.95t-1.788.3q-1 0-1.937-.375t-1.688-1.125l-3.8-3.775q-.425-.425-.65-.987T1 9.975t.225-1.137t.65-.988L5.85 3.875q.425-.425.988-.65T7.974 3t1.138.225t.987.65l3.775 3.8q.75.75 1.125 1.688t.375 1.937q0 .9-.312 1.788T14.1 14.7l5.9 5.9zM19.5 9q-1.45 0-2.475-1.025T16 5.5t1.025-2.475T19.5 2t2.475 1.025T23 5.5t-1.025 2.475T19.5 9"/></symbol><symbol id="ic-bd-both" viewBox="0 0 24 24"><path fill="currentColor" d="m17.1 8.05l-3.175-3.175L20.3 1.85l.45 4.4zm2.213 1.913q-.463-.088-.763-.438l-.35-.375l2.725-1.3l.05.5q.075.475-.137.888t-.638.612t-.887.113M2 7.5q0-1.65.938-2.575T5.575 4q1.775 0 3.475.675t2.975 1.95q.775.775 1.238 1.75t.462 2.075q0 .8-.237 1.55t-.738 1.375l7.225 7.225l-1.4 1.4l-7.225-7.225q-.65.475-1.387.737t-1.538.238q-1.2-.025-2.262-.575T4.3 13.7q-1.125-1.275-1.713-2.875T2 7.5"/></symbol><symbol id="ic-paddle" viewBox="-1.2 0.7 24 24"><path fill="currentColor" d="M18.575 22L12.7 16.125q-.725.65-1.612.95t-1.788.3q-1 0-1.937-.375t-1.688-1.125l-3.8-3.775q-.425-.425-.65-.987T1 9.975t.225-1.137t.65-.988L5.85 3.875q.425-.425.988-.65T7.974 3t1.138.225t.987.65l3.775 3.8q.75.75 1.125 1.688t.375 1.937q0 .9-.312 1.788T14.1 14.7l5.9 5.9z"/></symbol><symbol id="ic-racket" viewBox="-0.7 1.3 24 24"><path fill="currentColor" d="M2 7.5q0-1.65.938-2.575T5.575 4q1.775 0 3.475.675t2.975 1.95q.775.775 1.238 1.75t.462 2.075q0 .8-.237 1.55t-.738 1.375l7.225 7.225l-1.4 1.4l-7.225-7.225q-.65.475-1.387.737t-1.538.238q-1.2-.025-2.262-.575T4.3 13.7q-1.125-1.275-1.713-2.875T2 7.5"/></symbol><symbol id="ic-ball" viewBox="0 0 24 24"><path fill="currentColor" fill-rule="evenodd" d="M12 3a9 9 0 1 0 0 18a9 9 0 0 0 0-18zM12 5.5a1.3 1.3 0 1 1 0 2.6a1.3 1.3 0 0 1 0-2.6zM7.6 8.1a1.3 1.3 0 1 1 0 2.6a1.3 1.3 0 0 1 0-2.6zM16.4 8.1a1.3 1.3 0 1 1 0 2.6a1.3 1.3 0 0 1 0-2.6zM12 10.7a1.3 1.3 0 1 1 0 2.6a1.3 1.3 0 0 1 0-2.6zM7.6 13.3a1.3 1.3 0 1 1 0 2.6a1.3 1.3 0 0 1 0-2.6zM16.4 13.3a1.3 1.3 0 1 1 0 2.6a1.3 1.3 0 0 1 0-2.6zM12 15.9a1.3 1.3 0 1 1 0 2.6a1.3 1.3 0 0 1 0-2.6z"/></symbol><symbol id="ic-shuttle" viewBox="0 0 24 24"><path fill="currentColor" d="M12.3 2c-.97.03-1.72.84-1.69 1.8c.01.24.06.47.16.7l.29.64c.04.13-.03.27-.17.31c-.09.05-.19 0-.26-.08l-.42-.55c-.33-.42-.83-.68-1.36-.69c-.97-.02-1.77.75-1.79 1.71c-.01.42.13.82.39 1.16l.42.5h.01c.08.13.05.29-.06.37c-.09.07-.21.07-.29 0L7 7.45c-.34-.26-.75-.4-1.16-.39c-.96.02-1.73.82-1.71 1.79c.01.53.27 1.03.69 1.36l.57.44c.11.1.11.26-.01.35a.23.23 0 0 1-.26.05h-.01l-.61-.28c-.23-.09-.46-.15-.7-.16c-.96-.03-1.77.73-1.8 1.7c0 .72.4 1.38 1.06 1.66l11.39 5.07l4.59-4.59l-5.07-11.39C13.69 2.39 13 1.97 12.3 2m.83 4.1c.42-.01.8.23.96.61l3.05 6.84l-3.95-3.94l-.93-2.11c-.3-.63.16-1.38.87-1.4M9.85 8.85c.27 0 .52.1.71.3l4.81 4.81c.4.38.41 1.01.03 1.41c-.4.4-1.02.41-1.44 0l-4.81-4.81a.987.987 0 0 1-.02-1.41c.19-.2.45-.3.72-.3m-2.72 3.32c.13 0 .27.04.37.09l2.13.94l3.94 3.94l-6.86-3.05c-1.02-.44-.68-1.95.42-1.92m13.15 3.87l-4.24 4.24l.85.85c.76.75 1.86 1.04 2.89.77a3.02 3.02 0 0 0 2.12-2.12c.27-1.03-.02-2.13-.77-2.89z"/></symbol></defs></svg>
 <div class="wrap">
   <header class="top">
     <div class="brand">Smash &amp; Volley<small id="tagline">COURT BOOKING</small></div>
@@ -177,6 +179,13 @@ var CURS=[['USD','US dollar'],['CAD','Canadian dollar'],['MXN','Mexican peso'],[
 function money(n,cur){cur=cur||(S.settings&&S.settings.currency)||'USD';var v=Number(n);try{return new Intl.NumberFormat(undefined,{style:'currency',currency:cur,minimumFractionDigits:v%1?2:0,maximumFractionDigits:2}).format(v)}catch(e){return cur+' '+v}}
 function priceFor(sport,date,h){var peak=dow(date)%6===0||h>=S.settings.peak_start_hour;var r=S.rates[sport+(peak?'_p':'_o')];return {amt:r,peak:peak}}
 function slotRange(date,h){return [zoned(date,h,S.settings.timezone),zoned(date,h+1,S.settings.timezone)]}
+function busyRec(courtId,date,h){var r=slotRange(date,h),list=S.busy[courtId]||[];for(var i=0;i<list.length;i++){var b=list[i];if(new Date(b.start_time)<r[1]&&new Date(b.end_time)>r[0])return b}return null}
+function markerCell(b,lab,cfg){
+  cfg=cfg||S.settings;var m=cfg.booked_marker||'both',txt=cfg.booked_show_text!==false,sp=b&&b.sport,held=!!(b&&b.held);
+  if(m==='taken'||!sp)return '<div class="cell booked'+(held?' held':'')+'" aria-label="'+esc(lab+(held?', held while paying':sp||m==='taken'?', taken':', closed'))+'"><i>'+(held?'Held':sp||m==='taken'?'Taken':'Closed')+'</i></div>';
+  var pb=sp==='pickleball',id=m==='racket'?(pb?'paddle':'racket'):m==='ball'?(pb?'ball':'shuttle'):(pb?'pb-both':'bd-both'),name=pb?'Pickleball':'Badminton';
+  return '<div class="cell booked sp-'+sp+(held?' held':'')+'" role="img" aria-label="'+esc(lab+', '+name+(held?', held while paying':', booked'))+'"><svg class="ic" aria-hidden="true"><use href="#ic-'+id+'"/></svg>'+(held?'<i class="sn">Held</i>':txt?'<i class="sn nm">'+name+'</i>':'')+'</div>';
+}
 function isBusy(courtId,date,h){var r=slotRange(date,h),list=S.busy[courtId]||[];return list.some(function(b){return new Date(b.start_time)<r[1]&&new Date(b.end_time)>r[0]})}
 function isPast(date,h){return slotRange(date,h)[0]<=new Date()}
 function isFree(courtId,h){return !isBusy(courtId,S.date,h)&&!isPast(S.date,h)}
@@ -250,7 +259,7 @@ function renderGrid(){
           var prev=staffRec(c.id,hr-1),cont=prev&&prev.id===rec.id,pk=S.mSel&&S.mSel.c===c.id&&S.mSel.h===hr;
           var st=new Date(rec.start_time),inn=!!rec.checked_in_at,late=!inn&&!rec.blockId&&rec.status==='confirmed'&&rec.source!=='program'&&new Date()-st>15*60000&&new Date()<new Date(rec.end_time);
           h+='<button class="cell booked s-'+rec.source+(cont?' cont':'')+(pk?' picked':'')+(inn?' in':'')+(late?' late':'')+'" data-act="open" data-c="'+c.id+'" data-h="'+hr+'" aria-label="'+esc(lab+', '+SOURCES[rec.source]+', '+(rec.player_name||rec.label||''))+'">'+(cont?'':'<b>'+CODES[rec.source]+(rec.sport?' · '+(rec.sport==='pickleball'?'PB':'BD'):'')+'</b><i>'+esc(rec.player_name||rec.label||'')+'</i>')+'</button>';
-        }else h+='<div class="cell booked" aria-label="'+esc(lab+', taken')+'"><i>Taken</i></div>';
+        }else h+=markerCell(busyRec(c.id,S.date,hr),lab);
       }else if(staff?slotRange(S.date,hr)[1]<=new Date():isPast(S.date,hr))h+='<div class="cell past" aria-label="'+esc(lab+', passed')+'"></div>';
       else{
         var sel=staff?(S.mSel&&S.mSel.c===c.id&&S.mSel.h===hr):inSel(c.id,hr);
@@ -261,7 +270,7 @@ function renderGrid(){
   $('grid').innerHTML=h+'</div>';
   var lg='<span><i class="sw free"></i>Open'+(staff?'':' (price per hour)')+'</span>'+(staff?'<span>✓ checked in</span><span style="color:#c2410c">Orange outline: 15+ min late, not checked in</span>':'')+'<span><i class="sw past"></i>Passed or closed</span>';
   if(staff)lg+=Object.keys(SOURCES).map(function(s){return '<span><i class="sw s-'+s+'"></i>'+CODES[s]+' '+SOURCES[s]+'</span>'}).join('')+'<span>PB = pickleball, BD = badminton</span>';
-  else lg+='<span><i class="sw sel"></i>Your pick</span><span><i class="sw s-hold"></i>Taken</span>';
+  else{lg+='<span><i class="sw sel"></i>Your pick</span>';var mk=S.settings.booked_marker||'both',lic=function(a,b2){return mk==='racket'?[a[0],b2[0]]:mk==='ball'?[a[1],b2[1]]:[a[2],b2[2]]};if(mk==='taken')lg+='<span><i class="sw s-hold"></i>Taken</span>';else{var ids=lic(['paddle','ball','pb-both'],['racket','shuttle','bd-both']);lg+='<span style="color:var(--sp-pb)"><svg class="lg-ic"><use href="#ic-'+ids[0]+'"/></svg>Pickleball</span><span style="color:var(--sp-bd)"><svg class="lg-ic"><use href="#ic-'+ids[1]+'"/></svg>Badminton</span>'}if(S.settings.payment_required)lg+='<span><i class="sw" style="border-style:dashed"></i>Held while paying</span>'}
   $('legend').innerHTML=lg;
 }
 function renderStats(){
@@ -522,6 +531,11 @@ function renderSettings(){
    '<label>Credit given for a no-show (%)<input type="number" min="0" max="100" step="5" data-k="s.no_show_credit_percent" value="'+esc(s.no_show_credit_percent!=null?s.no_show_credit_percent:100)+'"></label>'+
    '<label>Hold the slot while paying<select data-k="s.hold_minutes">'+numOpts(s.hold_minutes||10,5,30,'minute')+'</select></label>'+
    cfgMsg('club')+'<button class="btn" data-act="save-club"'+b+'>Save club settings</button></div>'+
+  '<div class="setbox"><h3>Booked slots</h3><p class="muted">What players see on a booked square.</p>'+
+   '<label>Show<select data-k="s.booked_marker">'+[['taken','Just "Taken"'],['racket','Racket or paddle only'],['ball','Ball or shuttle only'],['both','Racket and ball (paddle + ball, racket + shuttle)']].map(function(o){return '<option value="'+o[0]+'"'+((s.booked_marker||'both')===o[0]?' selected':'')+'>'+o[1]+'</option>'}).join('')+'</select></label>'+
+   '<label class="check"><input type="checkbox" data-k="s.booked_show_text"'+(s.booked_show_text!==false?' checked':'')+((s.booked_marker||'both')==='taken'?' disabled':'')+'>Add the sport name under the icon</label><span class="muted">On phones the name is hidden to keep squares readable.</span>'+
+   '<div class="grid" style="--cols:3;grid-template-columns:repeat(3,60px);margin-top:4px">'+markerCell({sport:'pickleball'},'Preview',s)+markerCell({sport:'badminton'},'Preview',s)+markerCell({sport:'pickleball',held:true},'Preview',s)+'</div>'+
+   cfgMsg('marker')+'<button class="btn" data-act="save-marker"'+b+'>Save booked slots</button></div>'+
   '<div class="setbox"><h3>Rates</h3><p class="muted">Peak is weekends, and weekdays from the peak start time above.</p>'+
    rate('pickleball','o','Pickleball off-peak')+rate('pickleball','p','Pickleball peak')+rate('badminton','o','Badminton off-peak')+rate('badminton','p','Badminton peak')+
    cfgMsg('rates')+'<button class="btn" data-act="save-rates"'+b+'>Save rates</button></div>'+
@@ -541,6 +555,10 @@ async function saveCfg(sec){
       try{new Intl.DateTimeFormat('en-US',{timeZone:tz})}catch(e){S.cfgMsg.club={t:'That time zone is not valid. Example: America/New_York.'};return renderSettings()}
       S.busyBtn=true;renderSettings();
       res=await sb.from('club_settings').update({no_show_credit_percent:Math.min(100,Math.max(0,Math.round(+s.no_show_credit_percent||0))),payment_required:!!s.payment_required,hold_minutes:+s.hold_minutes||10,currency:s.currency||'USD',timezone:tz,peak_start_hour:+s.peak_start_hour,max_hours:+s.max_hours,max_upcoming_per_user:+s.max_upcoming_per_user,cancel_cutoff_hours:+s.cancel_cutoff_hours,max_days_ahead:+s.max_days_ahead}).eq('id',true).select();
+    }else if(sec==='marker'){
+      var mk=['taken','racket','ball','both'].indexOf(c.s.booked_marker)>-1?c.s.booked_marker:'both';
+      S.busyBtn=true;renderSettings();
+      res=await sb.from('club_settings').update({booked_marker:mk,booked_show_text:c.s.booked_show_text!==false}).eq('id',true).select();
     }else if(sec==='rates'){
       var rows=[],bad=false;['pickleball','badminton'].forEach(function(sp){['o','p'].forEach(function(pk){var v=parseFloat(c.r[sp+'_'+pk]);if(!(v>=0))bad=true;rows.push({sport:sp,peak:pk==='p',price:v})})});
       if(bad){S.cfgMsg.rates={t:'Enter a price of 0 or more for every rate.'};return renderSettings()}
@@ -595,11 +613,12 @@ document.addEventListener('click',function(e){
   else if(a==='noshow-yes')doNoShow(t.dataset.id);
   else if(a==='save-club')saveCfg('club');
   else if(a==='save-rates')saveCfg('rates');
+  else if(a==='save-marker')saveCfg('marker');
   else if(a==='save-courts')saveCfg('courts');
 });
 document.addEventListener('submit',function(e){var fm=e.target;if(fm.dataset&&fm.dataset.form==='auth'){e.preventDefault();doAuth()}});
 document.addEventListener('input',function(e){if(e.target.dataset&&e.target.dataset.f==='useCredit')return;var pp=e.target.dataset&&e.target.dataset.ppl;if(pp){var q=pp.split('.');S.pplIn=S.pplIn||{};S.pplIn[q[0]]=S.pplIn[q[0]]||{};S.pplIn[q[0]][q[1]]=e.target.value}setCfg(e.target);var f=e.target.dataset&&e.target.dataset.f;if(f)S.form[f]=e.target.value});
-document.addEventListener('change',function(e){setCfg(e.target);var f=e.target.dataset&&e.target.dataset.f;if(f==='useCredit'){S.useCredit=e.target.checked;renderPanel();return}if(f==='stype'){S.form.stype=e.target.value;S.err='';renderPanel()}});
+document.addEventListener('change',function(e){setCfg(e.target);if(e.target.dataset&&/^s\.booked_/.test(e.target.dataset.k||''))renderSettings();var f=e.target.dataset&&e.target.dataset.f;if(f==='useCredit'){S.useCredit=e.target.checked;renderPanel();return}if(f==='stype'){S.form.stype=e.target.value;S.err='';renderPanel()}});
 async function route(){
   var v=(location.hash||'#book').slice(1);if(['book','mine','staff','settings','profile','people'].indexOf(v)<0)v='book';
   if((v==='mine'||v==='profile')&&!S.user)v='book';if((v==='staff'||v==='settings'||v==='people')&&!S.isAdmin)v='book';
